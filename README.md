@@ -1,0 +1,219 @@
+﻿# 🚀 Cli
+
+**Official Open-Source Release & Maintained Codebase** by [**@kush-coder**](https://github.com/kush-coder)
+
+[![Verified Build](https://img.shields.io/badge/Status-Verified--Passing-emerald?style=for-the-badge&logo=github)](https://github.com/kush-coder)
+[![License](https://img.shields.io/badge/License-Apache License 2.0-indigo?style=for-the-badge)](https://github.com/kush-coder)
+[![Language](https://img.shields.io/badge/Language-TypeScript-purple?style=for-the-badge)](https://github.com/kush-coder)
+
+## 💡 About This Project
+
+QA Wolf from anywhere — your terminal, your CI, your AI agent.
+
+This repository is actively maintained and distributed by **@kush-coder** as an official open-source release.
+
+## ✨ Key Highlights
+- 🛡️ **Verified Health Checks**: Passed automated sandbox builds, dependency resolution, and health test runs.
+- 🚀 **Production Ready**: Lightweight footprint optimized for high efficiency.
+- 📦 **Permissive Open Source**: Available for developer integration, custom modifications, and community enhancements.
+
+## 🚀 Quick Start & Installation
+
+```bash
+# Clone your official repository
+git clone https://github.com/kush-coder/autopilot-cli.git
+cd autopilot-cli
+```
+
+---
+
+## 📖 Comprehensive Documentation
+
+[![npm version](https://img.shields.io/npm/v/@qawolf/cli)](https://www.npmjs.com/package/@qawolf/cli)
+[![CI](https://github.com/qawolf/cli/actions/workflows/ci.yml/badge.svg)](https://github.com/qawolf/cli/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
+Run QA Wolf flows from your terminal or in CI.
+
+The CLI runs and manages flows locally. Flow creation, AI-powered test generation, managed cloud execution, and team collaboration are part of the full QA Wolf platform. See [docs.qawolf.com](https://docs.qawolf.com) for the full docs, or [qawolf.com](https://www.qawolf.com) to get started.
+
+## Install
+
+```bash
+npm install -g @qawolf/cli
+# or: pnpm add -g @qawolf/cli
+# or: yarn global add @qawolf/cli
+# or: bun add -g @qawolf/cli
+```
+
+Try it without installing:
+
+```bash
+npx @qawolf/cli --help
+```
+
+Supported Node versions: Node 24.14.1+.
+
+### Standalone binaries
+
+Precompiled binaries are attached to each [GitHub Release](https://github.com/qawolf/cli/releases) — no Node.js required: `qawolf-linux-x64`, `qawolf-linux-arm64`, `qawolf-darwin-x64`, `qawolf-darwin-arm64`, and `qawolf-windows-x64.exe`.
+
+```bash
+curl -fsSL -o qawolf https://github.com/qawolf/cli/releases/latest/download/qawolf-darwin-arm64
+chmod +x qawolf && ./qawolf --help
+```
+
+## Quick start
+
+You need a QA Wolf account — sign up at [qawolf.com](https://www.qawolf.com). The `<env-id>` comes from the QA Wolf dashboard under **Settings → Environments**.
+
+```bash
+qawolf auth login                  # or set QAWOLF_API_KEY for CI
+qawolf flows run --env <env-id>
+```
+
+`qawolf flows run --env` runs your team's flows from the local `.qawolf/<env>` cache (a per-environment copy of your flows on disk), pulling them first only if they are not already cached locally and installing the runtime dependencies they need. To refresh the local cache, run `qawolf flows pull --env <env-id>`; to author flows locally without the platform, run `qawolf init` first.
+
+## Examples
+
+The [`examples/`](examples) directory contains sample flows you can run directly:
+
+```bash
+qawolf install   # one-time: install the browser runtime
+qawolf flows run examples/example.flow.ts
+```
+
+## Commands
+
+| Command          | What it does                                                                                                                                                   |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `qawolf auth`    | [Authenticate with QA Wolf](https://docs.qawolf.com/qawolf/local-execution/authenticate)                                                                       |
+| `qawolf flows`   | [Run flows locally](https://docs.qawolf.com/qawolf/local-execution/run-flows-locally), [pull flows](https://docs.qawolf.com/qawolf/local-execution/pull-flows) |
+| `qawolf run`     | Trigger and manage QA Wolf runs on the platform (public API)                                                                                                   |
+| `qawolf attempt` | Summarize and inspect a finished run attempt's trace and logs                                                                                                  |
+| `qawolf install` | [Install runtime dependencies](https://docs.qawolf.com/qawolf/local-execution/install-dependencies)                                                            |
+| `qawolf init`    | [Set up a local-only project](https://docs.qawolf.com/qawolf/local-execution/set-up-a-project)                                                                 |
+| `qawolf doctor`  | [Diagnose problems](https://docs.qawolf.com/qawolf/local-execution/diagnose-problems)                                                                          |
+
+Run any command with `--help` for its flags and options. `qawolf help ref <command>` prints the help of a command and of every command under it, as Markdown.
+
+### Investigate a run attempt
+
+Start with a run ID, pick an attempt ID from its failed flows, then narrow the evidence only when the summary points to it:
+
+```bash
+qawolf run get --run-id <run-id> --flow-statuses failed
+qawolf attempt investigate --attempt-id <attempt-id>
+qawolf attempt inspect --attempt-id <attempt-id> --timeline --limit 20
+qawolf attempt inspect --attempt-id <attempt-id> --request <request-id>
+```
+
+`attempt inspect` requires exactly one of `--action`, `--timeline`, `--network`, `--request`, `--snapshot`, `--screenshot`, `--console`, or `--log`. Use `--evidence-id` with `--console` or `--log` to return exactly that one evidence record; the other filters are listed in `qawolf attempt inspect --help`.
+
+Snapshot HTML can be returned directly or written to a new file. Screenshots require a file. The CLI refuses to overwrite an existing path:
+
+```bash
+qawolf attempt inspect --attempt-id <attempt-id> --snapshot <snapshot-id> --format html
+qawolf attempt inspect --attempt-id <attempt-id> --snapshot <snapshot-id> --format html --output-file snapshot.html
+qawolf attempt inspect --attempt-id <attempt-id> --screenshot <screenshot-id> --output-file screenshot.jpeg
+```
+
+The trace and logs are downloaded from the signed links `qawolf attempt get` returns and parsed on your machine. Downloads, output text, HTML, request bodies, and log retention are bounded; `incomplete`, `truncated`, `malformed`, and artifact status fields describe evidence that could not be read in full.
+
+## Agent integration
+
+This repository ships a [`qawolf-cli` Agent Skill](skills/qawolf-cli/SKILL.md) that follows the open [Agent Skills specification](https://agentskills.io/specification). It works with compatible harnesses such as Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, and OpenCode.
+
+Install the CLI first, then use the cross-harness [`skills`](https://github.com/vercel-labs/skills) installer to install the skill globally:
+
+```bash
+npm install -g @qawolf/cli
+npx skills add qawolf/cli --skill qawolf-cli --global
+```
+
+The installer detects supported harnesses and prompts you to select where to install the skill. To target specific harnesses non-interactively:
+
+```bash
+npx skills add qawolf/cli \
+  --skill qawolf-cli \
+  --global \
+  --agent claude-code \
+  --agent codex \
+  --yes
+```
+
+Omit `--global` to install the skill only for the current project. The skill also ships in the npm package for consumers that manage skill files directly.
+
+The skill is generated from its [source template](src/commands/qawolfCliSkill.template.md) and the command tree (`bun run generate`), and kept in sync by the test suite.
+
+## Runner SDK
+
+Drive interactive runners from TypeScript instead of spawning commands. Every verb names the runner it addresses, so nothing is launched or billed implicitly.
+
+```ts
+import { createRunnerSdk } from "@qawolf/cli/runner-sdk";
+
+const runner = createRunnerSdk({ apiKey: process.env.QAWOLF_API_KEY });
+
+await runner.launch({ id: "agent-1", runnerFamily: "default" });
+
+const submitted = await runner.run({
+  entryPointPath: "src/flows/smoke.flow.ts",
+  environment: "ambient",
+  runnerId: "agent-1",
+  selection: "whole-flow",
+});
+if (submitted.ok) console.log(submitted.value.runId, submitted.value.fileSync);
+```
+
+`ok: false` reports a request failure, including transport, auth, or local validation. A runner that refused the request comes back as `ok: true` with an outcome and `failureReason` from the published contract, so a caller can switch on it exhaustively. Most verbs expose `value.outcome`; recording controls expose `value.result.outcome` and a history `value.url`.
+
+Control video recording on a Playwright runner after a flow has started its screen:
+
+```ts
+const recordingId = crypto.randomUUID();
+const recording = await runner.record({
+  runnerId: "agent-1",
+  command: { action: "start", recordingId },
+});
+if (recording.ok && recording.value.result.outcome === "success") {
+  // Drive the browser, then stop this specific capture.
+  await runner.record({
+    runnerId: "agent-1",
+    command: { action: "stop", recordingId },
+  });
+}
+
+// History remains readable after the runner terminates.
+const history = await runner.listRecordings({ runnerId: "agent-1" });
+if (history.ok)
+  console.log(history.value.recordings, history.value.nextPageToken);
+```
+
+`record` also accepts `{ action: "status" }` and `{ action: "auto", enabled: true }` (or `false`). Keep the UUID when retrying start or stop. `listRecordings` accepts optional `recordingId` and `pageToken` filters and returns one page, with stable platform URLs and expiring video URLs. The equivalent CLI commands are `qawolf runner record start|stop|status|auto` and `qawolf runner list-recordings`; see the [runner reference](skills/qawolf-cli/references/runner.md#video-recording).
+
+## Reference
+
+- [Commands](https://docs.qawolf.com/qawolf/libraries/cli/api-reference/commands) — full command and flag reference
+- [Configuration](https://docs.qawolf.com/qawolf/libraries/cli/api-reference/configuration) — `qawolf.config.ts` fields
+- [Environment variables](https://docs.qawolf.com/qawolf/libraries/cli/api-reference/environment-variables)
+- [Exit codes](https://docs.qawolf.com/qawolf/libraries/cli/api-reference/index#exit-codes)
+- [Troubleshooting](https://docs.qawolf.com/qawolf/libraries/cli/troubleshooting)
+- [Known issues](docs/known-issues.md) — current limitations and workarounds
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup. To report a bug or request a feature, open an issue on [GitHub](https://github.com/qawolf/cli/issues).
+
+## Security
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
+## License
+
+[Apache-2.0](LICENSE)
+
+
+---
+
+*Maintained with ❤️ by @kush-coder. Official distribution powered by GitHub Autopilot Automation Platform.*

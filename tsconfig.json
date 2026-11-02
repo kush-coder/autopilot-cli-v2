@@ -1,0 +1,19 @@
+{
+  "extends": [
+    "@tsconfig/bun/tsconfig.json",
+    "@tsconfig/strictest/tsconfig.json"
+  ],
+  "compilerOptions": {
+    "outDir": "dist",
+    "noEmit": true,
+    "erasableSyntaxOnly": true,
+    "rewriteRelativeImportExtensions": true,
+    "verbatimModuleSyntax": true,
+    "types": ["bun"],
+    "paths": {
+      "~/*": ["./src/*"]
+    }
+  },
+  "include": ["src", "examples", "scripts"],
+  "exclude": ["node_modules", "dist"]
+}

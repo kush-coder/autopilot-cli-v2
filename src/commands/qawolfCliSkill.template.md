@@ -1,0 +1,236 @@
+---
+name: qawolf-cli
+description: Manage QA Wolf through the qawolf CLI. Use when asked to create, update, or list coverage requests, bug reports, or maintenance reports; start a run of flows or tags on the QA Wolf platform or read a run's results; list, set, or delete environment variables; manage environments, flows, or tags; run or list flows locally; authenticate; install the local runtime; or drive a live cloud browser (launch a runner, screenshot it, click and type on it, read its recorder) from a shell.
+license: Apache-2.0
+compatibility: Requires the qawolf CLI on PATH. Install it from @qawolf/cli or use a standalone binary from GitHub Releases.
+---
+
+# QA Wolf CLI
+
+`qawolf` runs QA Wolf flows locally, calls the QA Wolf public API, and drives
+interactive runners: live cloud pods holding a browser you can see and act on.
+
+This file is an overview, not a reference. Before first using a command whose
+flags are not shown here, run `qawolf <command> --help` once. The installed CLI
+is authoritative for flags and always matches its version; reuse that syntax
+for the rest of the task.
+
+## Auth
+
+Commands that talk to QA Wolf authenticate via the `QAWOLF_API_KEY`
+environment variable (or stored credentials from `qawolf auth login`).
+`read` and `write` commands require auth; `local` commands do not, unless
+their table entry notes a flag that switches them to `read`.
+Verify with `qawolf auth whoami`. Never print or log the key.
+
+A team API key in the environment is the whole credential, including for the
+`runner` group. Nothing needs a browser login, a session token or a held
+connection, so a sandbox that can set one environment variable and make
+requests to one host can do everything below.
+
+Commands use `https://app.qawolf.com` by default. Set `QAWOLF_HOST_URL` to
+target another deployment host, for example
+`https://app.staging.example.com`. `QAWOLF_API_URL` is a separate API endpoint
+and does not select the deployment host used by CLI commands.
+
+Resolve the target environment once per task. Use `QAWOLF_ENVIRONMENT` when it
+is set; otherwise select an id or alias from
+`qawolf --json environment find` and reuse it. Shell invocations may not share
+exported variables, so pass the selected environment explicitly instead of
+rediscovering it. Check the command's help for its environment flag: variable
+commands use `--environment-id`; `qawolf flows run` uses `--env`; and
+`qawolf runner run` uses `--env-id`, which falls back to `QAWOLF_ENVIRONMENT`
+when neither it nor `--env-file` is passed. To give one run a value the
+environment does not hold, keep the environment and add
+`--env-var NAME=VALUE`; it replaces the environment's value for that run only.
+
+If multiple environments are returned and the task context does not identify
+the target, ask instead of guessing. Do not default to the newest environment.
+
+`qawolf environment listVariableNames` intentionally returns names only. A
+listed name is enough to reference `process.env.NAME` in flow code; do not ask
+for its value merely because the CLI does not return it.
+
+## Interactive runners cost money
+
+An interactive runner is a live pod holding a browser, and it is billed while it
+runs. `qawolf runner launch` starts one; `qawolf runner run` starts one too when
+no runner is already available, and says so when it does. Reading a runner
+counts as activity, so `qawolf runner events --follow` left open keeps it alive
+and billing. `qawolf runner terminate` is what ends it, so terminate a runner you launched
+rather than leaving it to time out.
+
+`qawolf runner launch` remembers its runner as this directory's default, so the
+commands that follow need no `--runner`. Override that default for one command
+with `--runner <id>`, or for a whole session with `QAWOLF_RUNNER_ID`.
+
+Runner commands work in the workspace `qawolf auth switch` saved, which is
+shared by every session on the machine. When more than one session may be
+working in different workspaces, pass `--workspace-id <id>` to every runner
+command instead of switching; it applies to that command only and is never
+saved.
+
+## Output
+
+When consuming output programmatically, always pass `--json` (or `--agent`).
+Human-formatted output is not stable across versions. Errors go to stderr;
+a non-zero exit code means the command failed. Reuse successful read results
+within a task unless a relevant write or target change could make them stale.
+
+One exception to know about: on `qawolf runner events`, `--json` also switches
+each printed line from the payload alone to the whole envelope (`sequence`,
+`recordedAt`, `payload`). Both are JSON. Pass it when you want to page by
+sequence, omit it when you want the payloads themselves.
+
+A `--json` response shows you most of its own shape, so read it first.
+
+`qawolf run get` is the exception worth reading about before you use it. A
+suite run can hold hundreds of flows, so start with
+`--flow-statuses failed` and widen only if you need the rest. Its
+artifact URLs expire, its failure fields are absent from a passing run, and its
+`traceUrl` downloads a Playwright trace that you can read as JSON without
+opening the trace viewer. **Read
+[`references/run-results.md`](references/run-results.md) before reporting on a
+run's outcome or opening its trace.** If that path is not on your filesystem,
+fetch it:
+`https://raw.githubusercontent.com/qawolf/cli/main/skills/qawolf-cli/references/run-results.md`.
+
+## Safety: reads vs writes
+
+Read commands do not change team data, but some have operational effects noted
+in their command entry. Write commands act on the real team. Do not invent
+configuration or write speculative values; write only when requested or when
+the task requires missing configuration whose exact value is known. A
+successful write response is confirmation, so do not read immediately only to
+verify it. Never blind-retry a write on timeout: it may have reached the server
+the first time.
+
+Two runner-specific costs to keep in mind. Launching a runner starts a billed
+pod, so reuse one id rather than minting new ones per step, and stop a runner
+when you are done. And `run`, `act` and `exec` may all have taken effect even
+when their answer never arrives, so none of them is safe to blind-retry; `run`
+is the expensive one, because a second submission bills a second run.
+
+## Git-backed workflows
+
+Inspect `git status` before publishing. Stage and commit only files changed for
+the current task, preserve unrelated worktree changes, then push the task's
+current branch.
+
+The platform reads flows from the environment's flow code branch, not from your
+task branch. `qawolf --json environment get` reports it as `flowCodeBranch`
+(`name`, `syncStatus`, `lastSyncedCommitHash`). A flow has a platform page, an
+id, and a place in `qawolf flows list --remote` only once it is on that branch
+and the environment has reconciled the commit. To link or run a new flow on the
+platform: integrate the flow code branch into your work, push the flow to that
+branch, poll `environment get` until `lastSyncedCommitHash` includes your
+commit, then read the flow's `flowId` and `url` from
+`qawolf --json flows list --remote --env <environment> --include-drafts`. Send
+that `url`; never guess a route and never send a repository link in its place.
+
+## Commands
+
+<!-- commands-table:start — generated by `bun run generate`, do not edit -->
+
+<!-- commands-table:end -->
+
+Kinds: `read` calls the QA Wolf API without changing anything; `write`
+changes team state; `local` only affects this machine. A parenthesized
+note like `local (read with --remote)` means that flag makes the command
+call the QA Wolf API and require auth.
+
+## Asking QA Wolf to do the work: the `agent` group
+
+`qawolf agent send "<what you want>"` is the one verb that starts work from
+nothing. Every other write acts on a flow, run or issue that already exists.
+Name the journey, the part of the app it covers, and anything the AI cannot
+discover for itself, such as a test account, a feature flag, or how to reach a
+staging environment. For a long message, put it in a file and pass
+`"$(cat prompt.md)"`, so shell quoting cannot split it into arguments.
+
+`--environment-id <id-or-alias>` picks the environment and reads
+`QAWOLF_ENVIRONMENT`. A credential that is not bound to one workspace, such as
+an organization or user API key, needs `--workspace-id`.
+
+To give the AI a file, such as a spreadsheet of journeys, upload it first with
+`qawolf file requestUpload --file-name <name>`, PUT the bytes to the returned
+URL with the returned content type, then pass the returned path as
+`--file-paths <path>` on the send. The AI reads it from storage, so a plan of
+hundreds of journeys costs nothing to send. Up to 20 paths per send.
+
+The work runs for minutes to tens of minutes. **Pass `--follow` and do not poll.**
+The CLI reads the session for you, prints each reply once as it arrives, and
+exits when the session settles: 0 when the work is complete, non-zero when it
+failed or was cancelled. Looping `qawolf agent get` yourself costs a round trip
+per tick and shows you replies you have already seen.
+
+A session can stop and ask a question. With `--follow` in `--agent` or `--json`
+mode the CLI prints the question and **exits 0** — a session that asked something
+has handed the work back, it has not failed. Answer it, then pick the session
+back up:
+
+```bash
+qawolf agent send "<your answer>" --session <sessionId>
+qawolf agent get --follow
+```
+
+In `--agent` or `--json` mode a follow ends with one JSON line holding the whole
+session: `sessionId`, `status`, `url` and `replies`. It is the same object a
+plain `qawolf agent get` answers with. Read the final `status` from that line;
+the exit code alone does not tell a blocked session from a completed one.
+
+`agent send` remembers the session it started, so a later `agent get --follow`
+in the same directory needs no id. `--session <id>` or `QAWOLF_SESSION_ID`
+override that.
+
+Every session has a `url`, which the CLI prints when it starts or attaches.
+A session opens in whichever workspace the credential is pointed at, which is not
+always the one the user has open in the app, so send that `url` when you report
+on a session rather than describing where it went.
+
+Expect quiet stretches. QA Wolf reports a session as working and says nothing
+more until the AI speaks, so several minutes with no output is the session
+working, not the command hanging. `--timeout` bounds the wait; it is 30 minutes
+by default.
+
+## Uploading an app build: `build upload`
+
+`qawolf build upload <file>` uploads an `.apk`, `.aab` or `.ipa` and creates a
+build from it in one step. Use it instead of `build requestUpload`, a PUT and
+`build create` whenever the file is on this machine.
+
+Without an environment flag, the build belongs to no environment: only a run
+created with it installs it. `--environment-id <id>` or
+`--environment-name <name>` puts it on an environment, and that environment's
+runs install it from then on. It does not read `QAWOLF_ENVIRONMENT`: pass the
+environment on purpose.
+
+If the upload succeeds but creating the build fails, do not upload again.
+Finish it with `qawolf build create --build-id <id>` and the same flags.
+
+## Driving a browser: the `runner` group
+
+The `runner` commands drive a live cloud browser: `launch` one, `screenshot` to
+see it, `act` to click and type, `run` a flow on it, `exec` a snippet against its
+page, `record` to control video capture, `list-recordings` to read published video
+history even after termination, `events` to read its journal (including the `recorder` stream, which turns
+your actions into Playwright locators), `keepalive` to hold it open, and
+`terminate`
+when done. Everything is a plain request to one host, so a shell with an API key
+and its own vision model can close the see-and-act loop with no other tooling.
+
+When an action is followed by a look at the result, which in a see-and-act loop
+is every action, pass `--screenshot <path>` to `act` (or `-` for stdout) instead
+of calling `act` and then `screenshot`. One call performs the action and writes
+the screen the runner answers with: half the calls per step, and no delay to
+guess at between them.
+
+The full workflow is its own guide: how a runner is billed, the order the
+commands go in, the see-and-act loop, `exec`, the recorder, reading history,
+staying alive, and an end-to-end example. **Run
+`qawolf help ref runner` before driving a runner for the first time.** It prints
+that guide and the help of every runner command, for the CLI version you have.
+Each command's `--help` carries its own part, so `qawolf runner exec --help`
+alone covers `exec`. Without a CLI to run, read
+[`references/runner.md`](references/runner.md), the same text, or fetch it:
+`https://raw.githubusercontent.com/qawolf/cli/main/skills/qawolf-cli/references/runner.md`.

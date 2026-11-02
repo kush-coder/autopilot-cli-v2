@@ -1,0 +1,77 @@
+import { describe, expect, it } from "bun:test";
+import { Command } from "commander";
+import { join } from "node:path";
+
+import { makeNoopSignals } from "~/shell/signals/createSignalRegistry.fixtures.js";
+import { createProgram } from "./program.js";
+import {
+  renderCommandsTable,
+  renderRunnerReferenceMd,
+  spliceCommandsTable,
+} from "./skill.js";
+
+const skillMdPath = join(
+  import.meta.dirname,
+  "../../skills/qawolf-cli/SKILL.md",
+);
+const runnerMdPath = join(
+  import.meta.dirname,
+  "../../skills/qawolf-cli/references/runner.md",
+);
+const skillTemplatePath = join(
+  import.meta.dirname,
+  "qawolfCliSkill.template.md",
+);
+
+describe("renderCommandsTable", () => {
+  it("lists every visible command with its kind", () => {
+    const table = renderCommandsTable(
+      createProgram({ signals: makeNoopSignals() }),
+    );
+    expect(table).toContain("`qawolf run create`");
+    expect(table).toContain("write");
+    expect(table).toContain("`qawolf flows run`");
+    expect(table).toContain("`qawolf install browsers`");
+    // Hidden internals stay out of the skill.
+    expect(table).not.toContain("__run-worker");
+  });
+
+  it("renders a conditional kind note when declared", () => {
+    const table = renderCommandsTable(
+      createProgram({ signals: makeNoopSignals() }),
+    );
+    expect(table).toContain("local (read with --remote)");
+    expect(table).toContain("local (read with --env)");
+  });
+
+  it("throws on a command with no declared kind", () => {
+    const program = new Command().name("qawolf");
+    program.command("mystery").description("Unclassified command");
+    expect(() => renderCommandsTable(program)).toThrow(
+      'Command "mystery" has no kind. Declare it with declareCommandKind where the command is defined.',
+    );
+  });
+});
+
+describe("qawolf-cli skill", () => {
+  it("ships the runner reference as qawolf help ref runner prints it", async () => {
+    const runnerMd = await Bun.file(runnerMdPath).text();
+    expect(runnerMd).toBe(
+      renderRunnerReferenceMd(createProgram({ signals: makeNoopSignals() })),
+    );
+  });
+
+  it("matches its template and generated commands table", async () => {
+    const skillMd = await Bun.file(skillMdPath).text();
+    const skillTemplate = await Bun.file(skillTemplatePath).text();
+    const table = renderCommandsTable(
+      createProgram({ signals: makeNoopSignals() }),
+    );
+    expect(skillMd).toBe(spliceCommandsTable(skillTemplate, table));
+  });
+
+  it("has frontmatter naming the skill", async () => {
+    const skillMd = await Bun.file(skillMdPath).text();
+    expect(skillMd).toStartWith("---\nname: qawolf-cli\ndescription:");
+  });
+});

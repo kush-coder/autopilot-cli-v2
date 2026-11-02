@@ -1,0 +1,102 @@
+import { describe, expect, it } from "bun:test";
+import { runnerMessages } from "~/core/messages/index.js";
+import { createRunner } from "./createRunner.js";
+import type { FlowDefinition, RunnerDeps } from "./types.js";
+import { makeNoopSignals } from "~/shell/signals/createSignalRegistry.fixtures.js";
+
+function makeDeps(): RunnerDeps {
+  return {
+    fs: {
+      mkdir: async () => {},
+      writeFile: async () => {},
+      unlink: async () => {},
+    },
+    signals: makeNoopSignals(),
+    depsRoot: "/tmp",
+    createStorage: <T>() => ({
+      run: async (_store: T, callback: () => Promise<void>) => callback(),
+      getStore: () => undefined,
+    }),
+  };
+}
+
+describe("createRunner — guards and edge cases", () => {
+  it("throws synchronously when retries is negative", () => {
+    expect(() =>
+      createRunner({
+        deps: makeDeps(),
+        options: { retries: -1, outputDir: "/tmp" },
+      }),
+    ).toThrow(runnerMessages.invalidRetries(-1));
+  });
+
+  it("throws synchronously when retries is NaN", () => {
+    expect(() =>
+      createRunner({
+        deps: makeDeps(),
+        options: { retries: NaN, outputDir: "/tmp" },
+      }),
+    ).toThrow(runnerMessages.invalidRetries(NaN));
+  });
+
+  it("reports failure (not pass) when SIGTERM fires during flow execution", async () => {
+    let signalHandler: (() => void) | undefined;
+    const runner = createRunner({
+      deps: {
+        ...makeDeps(),
+        signals: {
+          register: (cleanup: () => void) => {
+            signalHandler = cleanup;
+            return () => {};
+          },
+          shutdown: async () => {},
+        },
+      },
+      options: { retries: 0, outputDir: "/tmp" },
+    });
+
+    const flow: FlowDefinition = {
+      name: "sigterm-during-run",
+      path: "/flows/sigterm-during-run.ts",
+      callback: async () => {
+        signalHandler?.();
+      },
+    };
+
+    const result = await runner.run(flow);
+
+    expect(result.passed).toBe(false);
+    expect(result.attempts).toBe(1);
+  });
+
+  it("deep-clones flowInputs so nested mutation in one attempt does not affect the next", async () => {
+    const flowInputs = { key: { nested: "original" } };
+    const runner = createRunner({
+      deps: makeDeps(),
+      options: { retries: 1, outputDir: "/tmp", flowInputs },
+    });
+
+    const captured: { key: { nested: string } }[] = [];
+    let attempts = 0;
+    const flow: FlowDefinition = {
+      name: "inputs-isolation",
+      path: "/flows/inputs-isolation.ts",
+      callback: async (deps) => {
+        const inputs = deps.flowInputs as { key: { nested: string } };
+        captured.push(inputs);
+        attempts++;
+        if (attempts === 1) {
+          inputs.key.nested = "mutated";
+          throw new Error("retry");
+        }
+      },
+    };
+
+    await runner.run(flow);
+
+    expect(captured).toHaveLength(2);
+    expect(captured[0]).not.toBe(captured[1]);
+    // attempt 2 should see the original value, not the mutation from attempt 1
+    expect(captured[1]!.key.nested).toBe("original");
+  });
+});

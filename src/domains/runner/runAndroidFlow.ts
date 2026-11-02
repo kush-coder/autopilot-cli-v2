@@ -1,0 +1,140 @@
+import path from "node:path";
+
+import type {
+  AndroidFlowApiReturnValue,
+  AndroidFlowDefinition,
+} from "@qawolf/flows/android";
+import { createAndroidLaunchContext } from "~/shell/appium/createAndroidLaunchContext.js";
+import type {
+  AndroidLaunchContext,
+  AndroidLaunchDeps,
+  AndroidLaunchOptions,
+} from "~/shell/appium/types.js";
+import { loadFlowDefault } from "./loadFlowDefault.js";
+import { createRunner } from "./createRunner.js";
+import type {
+  FlowDefinition,
+  FlowDeps,
+  FlowRunResult,
+  RunnerDeps,
+  RunnerOptions,
+} from "./types.js";
+import type { FlowRuntimeDeps } from "./flowRuntimeDeps.js";
+import { FailWithoutRetryError, FlowRunError } from "./errors.js";
+import { notSupported } from "./runWebFlowUtils.js";
+import {
+  resolveAvdName,
+  unsupportedAndroidDepNames,
+} from "./runAndroidFlowUtils.js";
+
+export type RunAndroidFlowDeps = RunnerDeps &
+  AndroidLaunchDeps & {
+    readonly flowRuntimeDeps?: FlowRuntimeDeps;
+  };
+
+export type RunAndroidFlowOptions = RunnerOptions &
+  Omit<AndroidLaunchOptions, "avdName"> & {
+    /** Overrides the AVD name derived from the flow target. */
+    avdName?: string;
+  };
+
+export async function runAndroidFlow({
+  deps,
+  options,
+  flowPath,
+}: {
+  deps: RunAndroidFlowDeps;
+  options: RunAndroidFlowOptions;
+  flowPath: string;
+}): Promise<FlowRunResult> {
+  let exported: AndroidFlowApiReturnValue;
+  try {
+    exported = await loadFlowDefault<AndroidFlowApiReturnValue>({
+      flowPath,
+      depsRoot: deps.depsRoot,
+    });
+    if (typeof exported === "function") {
+      // (D2) Android legacy flows have no target; AVD derivation is impossible.
+      throw new Error(
+        "runAndroidFlow: legacy flow functions are not supported; use flow() from @qawolf/flows/android",
+      );
+    }
+  } catch (err) {
+    const flowName = path.basename(flowPath, path.extname(flowPath));
+    return {
+      passed: false,
+      testCounts: { passed: 0, total: 0 },
+      attempts: 1,
+      error: new FlowRunError(flowName, 1, err),
+    };
+  }
+
+  const {
+    name: flowName,
+    run: runFn,
+    target,
+  } = exported as AndroidFlowDefinition;
+  const avdName = options.avdName ?? resolveAvdName(target);
+
+  const openCtxs: AndroidLaunchContext[] = [];
+  const unregisters: (() => void)[] = [];
+  let result: FlowRunResult | undefined;
+
+  // Lazily creates a new context each time the flow calls wdio.startAndroid().
+  const startAndroid = async (): Promise<unknown> => {
+    const ctx = createAndroidLaunchContext({
+      deps,
+      options: {
+        avdName,
+        recordVideo: options.recordVideo,
+        outputDir: options.outputDir,
+      },
+    });
+    openCtxs.push(ctx);
+    unregisters.push(
+      deps.signals.register(async () => {
+        await ctx.cleanup(false);
+      }),
+    );
+    await ctx.launch();
+    const driver = ctx.pages()[0];
+    if (driver === undefined) {
+      throw new Error(
+        "Android launch context returned no driver after a successful launch",
+      );
+    }
+    return driver;
+  };
+
+  const flowDef: FlowDefinition = {
+    name: flowName,
+    path: flowPath,
+    callback: async (flowDeps: FlowDeps) => {
+      const androidDeps: Record<string, unknown> = {
+        ...Object.fromEntries(
+          unsupportedAndroidDepNames.map((name) => [name, notSupported(name)]),
+        ),
+        ...deps.flowRuntimeDeps,
+        inputs: flowDeps.flowInputs,
+        workflowInputs: flowDeps.flowInputs,
+        setOutput: flowDeps.setOutput,
+        failWithoutRetry: () => {
+          throw new FailWithoutRetryError("failWithoutRetry");
+        },
+        wdio: { startAndroid },
+      };
+      await runFn(androidDeps as unknown as Parameters<typeof runFn>[0]);
+    },
+  };
+
+  const runner = createRunner({ deps, options });
+  try {
+    result = await runner.run(flowDef);
+    return result;
+  } finally {
+    // unregister first so a concurrent signal cleanup doesn't duplicate the closes
+    for (const unreg of unregisters) unreg();
+    const passed = result?.passed ?? false;
+    await Promise.allSettled(openCtxs.map((ctx) => ctx.cleanup(passed)));
+  }
+}

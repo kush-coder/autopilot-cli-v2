@@ -1,0 +1,252 @@
+# Reading a run's results
+
+How to use what `qawolf run get --run-id <id> --json` returns, and how to read
+the Playwright trace it links to.
+
+Call `run get` with `--json` and you see most of the response immediately. Read
+this file for the parts a single response cannot show you: fields that appear
+only when something fails, rules about the artifact URLs, and how to read a
+trace without opening the trace viewer.
+
+## Start with the failed flows
+
+A run of a whole suite can hold hundreds of flows, and the full response then
+runs to hundreds of kilobytes: more than a shell shows you, and more than any
+investigation needs. The interesting part is a handful of failed flows, so ask
+for those first:
+
+```bash
+qawolf run get --run-id "$RUN_ID" --flow-statuses failed --json
+```
+
+`--flow-statuses` takes one or more of `queued`, `running`, `passed`, `failed`
+and `canceled`, separated by spaces (`--flow-statuses failed canceled`), and
+keeps only the flows whose status matches. The run-level fields (`status`,
+`blockingBugCount`, `git`, `url`) still describe the whole run, so a filtered
+read tells you both how the run went and which flows to look at. Widen the
+filter, or drop it, only when you need the other flows too.
+
+A flow that failed and then passed on a retry has status `passed`, so a
+`failed`-only read leaves it out. If the flow you were asked about passed on a
+retry, add `passed` to the filter and read its earlier attempts. For a flow
+that is still queued, running or was canceled, widen the filter or drop it.
+
+Do not save the full response to a file and script over it to find the failed
+flows. The filter answers that in one call.
+
+## The shape
+
+A run holds flows, a flow holds attempts, and artifacts hang off an attempt:
+
+```text
+run
+└── flows[]
+    ├── failure          only when the flow failed
+    └── attempts[]       oldest first
+        ├── logsUrl
+        ├── traceUrl
+        └── videoUrl
+```
+
+`runId` in the response is canonical and can differ from the id you asked for.
+Use the returned value for follow-up calls.
+
+`run get` resolves platform runs only. A run id printed by `qawolf runner run`
+belongs to that runner, so `run get` answers exit `8` and no such run on this
+team. Read one of those with `qawolf runner events run-status --run <id>`.
+
+A run that has been requested but not yet created answers exit `8` too, and
+says it is still being created. That one clears on its own, so read the message
+rather than the code before deciding whether to poll.
+
+Poll `status` until it reaches `passed`, `failed`, `canceled` or `superseded`.
+When it is `superseded`, this run will never change again. Read the replacement
+run in `supersededBy.runId` for the verdict. `queued` and `running` mean the run
+is still going.
+
+## Fields a passing run does not show you
+
+- `flows[].failure` exists only when a flow failed. Every flow passing means
+  there is no failure object at all, so its diagnosis and issue id are invisible
+  until something breaks. Do not conclude the field does not exist.
+- `git` is populated only when a deploy notification started the run. A run
+  started manually or with `run create` has an empty object here.
+- An attempt's `kind` and `status` select which other fields it has. Only
+  automated attempts that reached a verdict carry artifact URLs; canceled
+  attempts and manual Wolf Browser attempts carry none.
+- A flow that passed after a retry still lists its failed attempts. Read the
+  last attempt for the outcome, and the earlier ones to see what went wrong.
+
+## Artifact URLs
+
+Each automated attempt links `logsUrl` (execution logs), `videoUrl` (screen
+recording) and `traceUrl` (a Playwright `trace.zip`).
+
+1. They are signed URLs with a limited life. The contract guarantees at least a
+   day. Call `run get` again for fresh ones instead of storing them; a stored
+   URL becomes a dead link.
+2. A URL can return 404 when that attempt did not produce that artifact. Handle
+   the 404 rather than treating the URL's presence as a guarantee of content.
+3. Download with a plain HTTP GET. The signature is in the URL, so no
+   authentication header is needed and no QA Wolf credentials are involved.
+
+```bash
+qawolf run get --run-id "$RUN_ID" --flow-statuses failed --json \
+  | jq -r '.flows[].attempts[-1].traceUrl // empty' \
+  | head -1 \
+  | xargs -r curl -sS -o trace.zip
+```
+
+## Reading the Playwright trace
+
+The usual advice is `npx playwright show-trace trace.zip`, which opens a
+browser window. That is useless in a shell and unnecessary: the zip holds
+newline-delimited JSON files, and reading them directly is faster than
+downloading a viewer.
+
+The zip holds `trace.trace` (the events), `trace.network` (one request and
+response per line) and a `resources/` directory of screencast frames. The
+frames are most of the size, so extract only what you need.
+
+### The event types
+
+Every line of `trace.trace` is one JSON object with a `type`:
+
+- `before` — a call started. Carries `callId`, `startTime`, `class`, `method`
+  and `params`. `params.selector` or `params.url` is usually the target.
+- `after` — that call finished. Matched to its `before` by `callId`. Carries
+  `endTime` and `result`, and an `error` when the call failed.
+- `console` — a browser console message, with `messageType` and `text`.
+- `log` — Playwright's own progress notes for a call.
+- `screencast-frame`, `frame-snapshot` — the filmstrip and DOM snapshots the
+  viewer renders. Usually not worth reading directly.
+
+Two details cost time if you miss them:
+
+- **Times are monotonic milliseconds, not seconds.** A `goto` whose `startTime`
+  and `endTime` differ by `161.6` took 161 milliseconds. Subtract the smallest
+  `startTime` to get an offset from the start of the trace.
+- **Return values use a serialized envelope.** `{"value":{"s":"passed"}}` is
+  the string `passed`, `{"n":640}` is the number `640`, and `{"o":[...]}` is an
+  object as a list of key and value pairs.
+
+### A worked example
+
+Pairing `before` with `after` gives an action timeline with durations and
+failures:
+
+```python
+import json, sys, zipfile
+
+with zipfile.ZipFile(sys.argv[1]) as z:
+    events = [json.loads(line) for line in z.read("trace.trace").decode().splitlines()]
+
+starts = {e["callId"]: e for e in events if e["type"] == "before"}
+ends = {e["callId"]: e for e in events if e["type"] == "after"}
+t0 = min(e["startTime"] for e in starts.values())
+
+for call_id, before in starts.items():
+    after = ends.get(call_id, {})
+    params = before.get("params", {})
+    target = params.get("selector") or params.get("url") or ""
+    error = after.get("error")
+    print(
+        f'{(before["startTime"] - t0) / 1000:7.2f}s'
+        f' {after.get("endTime", before["startTime"]) - before["startTime"]:7.1f}ms'
+        f'  {before["class"]}.{before["method"]:<18} {target[:40]}'
+        f'{"  FAILED: " + json.dumps(error)[:60] if error else ""}'
+    )
+
+for e in events:
+    if e["type"] == "console" and e["messageType"] == "error":
+        print(f'console error: {e["text"][:70]}')
+```
+
+It prints one line per call, in order:
+
+```text
+   0.00s   161.6ms  Frame.goto               https://example.com/
+   0.17s    28.3ms  Frame.waitForSelector    #screen
+   0.20s     4.2ms  Frame.innerText          #fps_stats
+console error: Failed to load resource: the server responded with a status of 404 ()
+```
+
+To find why an attempt failed, read the last `after` that carries an `error`,
+then the `console` errors near it in time. To see what the page did, read
+`trace.network`.
+
+## Response fields
+
+Every documented field of the `run.get` response. `[]` marks an array, so
+`flows[].attempts[].traceUrl` is the trace URL of one attempt of one flow.
+
+<!-- fields:start — generated by `bun run generate`, do not edit -->
+
+- `completedAt` — When the run finished executing. Absent while queued or running, and also absent for a terminal run that never completed execution (e.g. every flow was canceled or skipped).
+- `git` — The branch and commit under test. The fields are present when a deploy notification started the run, and absent for runs started another way, for example manually or with run.create.
+- `git.commitUrl` — Link to the commit on the code host.
+- `needsReview` — True once every flow has finished its attempts and at least one failed flow still has no diagnosis, including one whose investigation carried over to a later run. `status` stays `running` until that failure is diagnosed, so a caller that is not waiting for a diagnosis can stop polling here and read the run's failed flows.
+- `runId` — The run this response describes. Treat it as canonical: it can differ from the id you asked for. A deploy notification returns a run id before the run exists, and if a second notification for the same commit is folded into an earlier run, that id resolves to the earlier run instead.
+- `status` — One of: queued, running, passed, failed, canceled, superseded
+- `supersededBy` — The run that replaced this one, present only when `status` is `superseded`. A newer deployment to the same branch and environment (and service, when the deployment named one) cancels the older run's unfinished flows and takes over. Deduplication ignores the commit, so the replacement may be testing a later commit than this run did. Only the direct replacement is named; that run can itself be superseded.
+- `supersededBy.runId` — The id of the run.
+- `supersededBy.url` — Absolute URL of the replacement run's page.
+- `blockingBugCount` — How many bugs this run found are blocking: still open, and priority urgent, high, or unprioritized — unprioritized counts because nobody has ruled it out yet. This is what `failed` is derived from, so it explains a failure rather than adding a second verdict: gate on `status`, then read this to say how many bugs are holding the build. It counts a bug filed against a later run by an investigation that carried over from this one, and it drops a bug once that bug is resolved.
+- `builds` — The builds the run installs, one per app and platform. Empty when the run has none.
+- `builds[].appId` — The package name (Android) or bundle ID (iOS) read from the file. A flow launches it with `launch({ app: { id } })`.
+- `builds[].appName` — The app's display name, when the file names one.
+- `builds[].branch` — The branch the uploader said the build came from.
+- `builds[].buildNumber` — versionCode (Android) or CFBundleVersion (iOS), when the file has one.
+- `builds[].commitSha` — The commit the uploader said the build came from.
+- `builds[].createdAt` — When the build was created.
+- `builds[].deletedAt` — When the build was deleted. Runs never install it after.
+- `builds[].environmentId` — The environment whose runs install the build while it is the newest one there for its app and platform. Absent: only a run created with the build installs it.
+- `builds[].fileName` — The uploaded file's name.
+- `builds[].id` — The id of the build, from build.requestUpload.
+- `builds[].platform` — One of: android, ios
+- `builds[].sizeBytes` — The file's size in bytes.
+- `builds[].version` — versionName (Android) or CFBundleShortVersionString (iOS), when the file has one.
+- `builds[].url` — Absolute URL of the team's Builds page.
+- `buildVersions` — The apps the run's attempts installed, one per app and platform, with warnings. Empty when no attempt reported an install and the run has no builds.
+- `buildVersions[].appId` — The package name (Android) or bundle ID (iOS) of the app.
+- `buildVersions[].expected` — The run's build of this app. Absent for an app it got none of.
+- `buildVersions[].expected.buildId` — The id of the build, from build.requestUpload.
+- `buildVersions[].kind` — One of build, info; newer servers may add values, so ignore any you don't know. build: the run got a build of this app. info: any other app an attempt installed, such as a companion app. It has no warnings.
+- `buildVersions[].observed` — What attempts installed, one entry per build or version.
+- `buildVersions[].observed[].attempts` — How many attempts reported it.
+- `buildVersions[].observed[].buildId` — Absent when the file is not one of the team's builds.
+- `buildVersions[].platform` — One of: android, ios
+- `buildVersions[].unreportedAttempts` — Finished attempts that reported no installed app, such as web attempts or attempts on an older Flows SDK.
+- `buildVersions[].warnings` — Why the installed apps may not be what the run should test.
+- `flows` — The run's flows, ordered alphabetically by name. Only the flows matching flowStatuses when the request set it.
+- `flows[].attempts` — The flow's finished execution attempts, oldest first, including manual Wolf Browser attempts. Present once at least one attempt has finished, so a flow that passed after retries also lists its failed attempts. Artifact URLs appear only on attempts that reached a verdict, and on a manual attempt only when its Wolf Browser run kept them. They stay valid for at least a day (call run.get again for fresh ones), and can return 404 when the attempt did not produce that artifact.
+- `flows[].attempts[].logsUrl` — Signed URL for the attempt's execution logs.
+- `flows[].attempts[].traceUrl` — Signed URL for the attempt's Playwright trace (a trace.zip; open it with `npx playwright show-trace`).
+- `flows[].attempts[].videoUrl` — Signed URL for the attempt's screen recording.
+- `flows[].attempts[].attemptId` — The id of the run attempt.
+- `flows[].attempts[].kind` — One of: automated, manual
+- `flows[].attempts[].startedAt` — Absent when the attempt failed before it could start.
+- `flows[].attempts[].status` — One of: passed, failed, canceled
+- `flows[].attempts[].url` — Absolute URL of the attempt's page in the app, which opens this flow at this attempt. Link this page to show one flow's attempt: the run page opens a different flow. Absent only in replies from servers older than this field.
+- `flows[].attempts[].canceledReason` — Why the attempt was canceled. userCanceled means a person stopped it; do not immediately retry that activity.
+- `flows[].failure.diagnosis` — QA Wolf's investigation verdict for the failure: `bug` means the application is broken, `maintenance` means the test needed an update and the failure does not indicate an application problem. Absent until the investigation reaches a verdict, and absent when the flow was opted out of investigation. Pass issueId to issue.get for details.
+- `flows[].failure.diagnosis.issueId` — The id of the issue.
+- `flows[].failure.diagnosis.type` — One of: bug, maintenance
+- `flows[].failure.optedOutOfInvestigation` — Present when the failure was marked "do not investigate" (DNI): it will get no bug or maintenance verdict.
+- `flows[].failure.optedOutOfInvestigation.by` — One of: user, system
+- `flows[].flowId` — The id of the flow.
+- `flows[].status` — One of: failed, queued, running, passed, canceled
+- `siteVersions` — The versions the run's attempts saw on each site origin, with warnings. Empty when no attempt reported one.
+- `siteVersions[].expected` — The commit the run should see. Only on the origin the deployment reported as its target. Absent when no deployment names a commit and a target, or the deployment has a service.
+- `siteVersions[].expected.from` — One of deployment, latestDeployment; newer servers may add values, so ignore any you don't know. deployment: the run's own deployment. latestDeployment: the environment's latest successful deployment before the run.
+- `siteVersions[].expected.version` — The deployed commit.
+- `siteVersions[].observed` — What attempts saw, one entry per version and source.
+- `siteVersions[].observed[].attempts` — How many attempts reported it.
+- `siteVersions[].observed[].source` — One of header, meta, versionPath, frameworkBuildId, fingerprint; newer servers may add values, so ignore any you don't know. Where the attempt read the version.
+- `siteVersions[].origin` — The site origin the attempts visited.
+- `siteVersions[].warnings` — Why the site may not be the version the run should test.
+- `waitSeconds` — The hold this check was allowed, in seconds, after clamping. Absent when the check did not wait.
+- `wokeOn` — One of: status, timeout
+- `url` — Absolute URL of the run page.
+
+<!-- fields:end -->

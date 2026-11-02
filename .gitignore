@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Generated source files
+src/generated/
+
+# Generated smoke-test bundles (built in CI)
+test/node20/loader.generated.mjs
+test/spawn/*.generated.mjs
+test/testkit/*.generated.mjs
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Bun
+bun.lockb
+
+# Local overrides
+*.local.md
+*.local.json
+
+# QA Wolf CLI output
+.qawolf/
+
+# Agents
+.claude/*
+!.claude/rules/

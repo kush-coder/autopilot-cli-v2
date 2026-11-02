@@ -1,0 +1,119 @@
+import { describeFetchCause } from "~/core/fetchCause.js";
+import { formatSeconds } from "~/core/formatSeconds.js";
+import { parseJson } from "~/core/parseJson.js";
+import { authMessages } from "~/core/messages/index.js";
+import type { NotFoundSubject } from "~/core/publicApi/notFoundSubject.js";
+import { exitCodes } from "~/shell/exit.js";
+import type { WireError } from "./createTrpcClient.js";
+import { describeNotFound } from "./describeNotFound.js";
+import { parseErrorBody } from "./parseErrorBody.js";
+import type { PlatformFailure } from "./requestWithRetry.js";
+
+const m = authMessages.errors;
+
+/** Identity failures inline the reason into a single line, so keep it short. */
+const inlineReasonMaxLength = 200;
+
+export function describeIdentityError(err: WireError): PlatformFailure {
+  if (err.kind === "http") {
+    if (err.status === 401 || err.status === 403) {
+      // Exit 3 is documented as "QAWOLF_API_KEY is missing or invalid". Only a
+      // 401 proves the key was rejected; a 403 means it authenticated but
+      // lacks permission, which stays on the default exit code.
+      return {
+        error: m.identity.invalidOrUnauthorized,
+        ...(err.status === 401 ? { exitCode: exitCodes.auth } : {}),
+      };
+    }
+    return {
+      error: m.identity.couldNotVerify(
+        parseErrorBody(err.body, inlineReasonMaxLength),
+        err.status,
+      ),
+    };
+  }
+  if (err.kind === "network") {
+    return { error: m.identity.couldNotVerifyNetwork(err.cause.message) };
+  }
+  if (err.kind === "timeout") {
+    return { error: m.identity.timedOut(err.timeoutMs) };
+  }
+  return { error: m.identity.unexpectedFormat };
+}
+
+// The title stays short and stable so a caller can branch on it; the server's
+// reason goes in the body.
+export function describeRequestError(
+  err: WireError,
+  baseUrl: string,
+  noun?: string,
+  notFound?: NotFoundSubject,
+): PlatformFailure {
+  if (err.kind === "http") {
+    const reason = parseErrorBody(err.body);
+    const body = reason ? { errorBody: reason } : {};
+    // A 401 means the key itself was rejected, which the exit-code contract
+    // maps to auth (3); a 403 is a permission problem with a valid key.
+    if (err.status === 401)
+      return {
+        error: m.request.rejected401(noun),
+        exitCode: exitCodes.auth,
+        ...body,
+      };
+    if (err.status === 402)
+      return {
+        error: m.request.rejected402(noun),
+        exitCode: exitCodes.payment,
+        ...body,
+      };
+    // The API answers errors with JSON, so any other 403 body came from a proxy.
+    if (err.status === 403)
+      return parseJson(err.body) === undefined
+        ? { error: m.request.blocked403(noun) }
+        : { error: m.request.rejected403(noun), ...body };
+    if (err.status === 404) return describeNotFound(notFound, noun, reason);
+    return { error: m.request.failedWithStatus(err.status, noun), ...body };
+  }
+  if (err.kind === "network") {
+    return {
+      error: m.request.networkUnreachable({
+        baseUrl,
+        cause: describeFetchCause(err.cause),
+        noun,
+      }),
+    };
+  }
+  if (err.kind === "timeout") {
+    return { error: m.request.timedOut(err.timeoutMs, noun) };
+  }
+  return { error: m.request.unexpectedResponse(noun) };
+}
+
+export function describeBundleDownloadError(err: WireError): string {
+  if (err.kind === "http") {
+    if (err.status === 401 || err.status === 403) return m.bundle.linkExpired;
+    return m.bundle.failedWithStatus(err.status);
+  }
+  if (err.kind === "network") return m.bundle.networkUnreachable;
+  if (err.kind === "timeout") return m.bundle.timedOut(err.timeoutMs);
+  return m.bundle.malformed;
+}
+
+export function describeTeamStorageDownloadError(
+  path: string,
+  err: WireError,
+): string {
+  if (err.kind === "http") {
+    if (err.status === 401 || err.status === 403) {
+      return `The team-storage download link for ${path} has expired. Please run \`qawolf flows pull\` again to refresh.`;
+    }
+    return `Could not download team-storage asset ${path} (HTTP ${err.status}).`;
+  }
+  if (err.kind === "network") {
+    return `Could not reach team-storage while downloading ${path}. Check your network connection and try again.`;
+  }
+  if (err.kind === "timeout") {
+    return `Downloading the team-storage asset ${path} stalled — no data arrived for ${formatSeconds(err.timeoutMs)}. Please try again.`;
+  }
+  return `The team-storage download for ${path} was malformed. Please run \`qawolf flows pull\` again.`;
+}

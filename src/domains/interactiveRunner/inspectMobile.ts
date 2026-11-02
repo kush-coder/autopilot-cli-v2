@@ -1,0 +1,105 @@
+import { publicContractsV1 } from "@qawolf/api-contracts/v1";
+
+import {
+  type InspectMobileFlags,
+  buildInspectMobileRequest,
+} from "~/core/interactiveRunner/inspectMobileRequest.js";
+import { interactiveRunnerMessages } from "~/core/messages/index.js";
+import type {
+  AuthCommandContext,
+  CommandResult,
+} from "~/shell/commandContext.js";
+import { exitCodes } from "~/shell/exit.js";
+import { failureFields } from "~/shell/platform/requestWithRetry.js";
+
+import type { InteractiveRunnerDeps } from "./deps.js";
+import { describeSession, streamLine } from "./inspectMobileAnswer.js";
+import { resolveRunner } from "./resolveRunner.js";
+import { runnerRequestFailure } from "./runnerRequestFailure.js";
+import { runnerCallOptions } from "./runnerCallOptions.js";
+
+/**
+ * Reads one thing off a mobile interactive runner. Never launches, same as
+ * `screenshot`: a freshly started runner has no live Appium session yet.
+ */
+export async function handleRunnerInspectMobile(
+  ctx: AuthCommandContext,
+  options: {
+    flags: InspectMobileFlags;
+    runner: string | undefined;
+    what: string;
+  },
+  deps: InteractiveRunnerDeps,
+): Promise<CommandResult> {
+  const built = buildInspectMobileRequest(options.what, options.flags);
+  if (!built.ok) return { error: built.error, exitCode: exitCodes.invalidArgs };
+
+  const resolved = await resolveRunner(
+    ctx,
+    {
+      autoLaunch: false,
+      noRunnerIdMessage: interactiveRunnerMessages.noRunnerIdForInspect,
+      runner: options.runner,
+    },
+    deps,
+  );
+  if (resolved.type === "failed") {
+    return { ...failureFields(resolved), exitCode: resolved.exitCode };
+  }
+
+  const result = await ctx.platformClient.callPublicApi(
+    publicContractsV1.runner.inspectMobile,
+    { id: resolved.runnerId, request: built.request },
+    runnerCallOptions,
+  );
+  if (!result.ok) {
+    return runnerRequestFailure(result, resolved);
+  }
+
+  if (result.value.outcome === "success") {
+    const value = result.value;
+    if (value.what === "session") {
+      ctx.ui.output(value, describeSession(value.session));
+    } else {
+      ctx.ui.stream(value, streamLine(value));
+    }
+    return undefined;
+  }
+
+  const { failureReason } = result.value;
+  switch (failureReason) {
+    case "invalid-selector":
+      return {
+        error: interactiveRunnerMessages.inspectMobileInvalidSelector,
+        exitCode: exitCodes.invalidArgs,
+      };
+    case "runner-is-not-mobile":
+      return {
+        error: interactiveRunnerMessages.runnerIsNotMobile,
+        exitCode: exitCodes.invalidArgs,
+      };
+    case "screen-needs-a-run":
+      return {
+        error: interactiveRunnerMessages.screenNeedsARun,
+        exitCode: exitCodes.invalidArgs,
+      };
+    case "screen-not-ready":
+      return {
+        error: interactiveRunnerMessages.screenNotReady,
+        exitCode: exitCodes.network,
+      };
+    case "runner-unreachable":
+      return {
+        error: interactiveRunnerMessages.runnerUnreachable,
+        exitCode: exitCodes.network,
+      };
+    default: {
+      failureReason satisfies never;
+      return {
+        error:
+          interactiveRunnerMessages.inspectMobileAnsweredUnknown(failureReason),
+        exitCode: exitCodes.network,
+      };
+    }
+  }
+}

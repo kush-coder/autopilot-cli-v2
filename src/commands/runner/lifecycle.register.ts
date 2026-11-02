@@ -1,0 +1,108 @@
+import type { Command } from "commander";
+
+import { declareCommandKind } from "~/commands/commandKind.js";
+import { handleRunnerKeepalive } from "~/domains/interactiveRunner/keepalive.js";
+import { handleRunnerLaunch } from "~/domains/interactiveRunner/launch.js";
+import { handleRunnerList } from "~/domains/interactiveRunner/list.js";
+import { handleRunnerStopRun } from "~/domains/interactiveRunner/stopRun.js";
+import { handleRunnerTerminate } from "~/domains/interactiveRunner/terminate.js";
+import type { SignalRegistry } from "~/shell/signals/createSignalRegistry.js";
+
+import {
+  runnerDeps,
+  runnerFlagDescription,
+  withRunnerContext,
+} from "./context.js";
+import { runnerGuides } from "./guides/index.js";
+
+const launchExamples = `
+Examples:
+  $ qawolf runner launch
+  $ qawolf runner launch --name android
+  $ qawolf runner launch --id ci`;
+
+const listExamples = `
+Examples:
+  $ qawolf runner list
+  $ qawolf runner list --here
+  $ qawolf runner list --json`;
+
+const keepaliveExamples = `
+Examples:
+  $ qawolf runner keepalive
+  $ qawolf runner keepalive --runner ci`;
+
+export function registerRunnerLifecycleCommands(
+  runner: Command,
+  signals: SignalRegistry,
+): void {
+  declareCommandKind(runner.command("launch"), "write")
+    .description(
+      "Launch an interactive runner and make it this directory's default",
+    )
+    .option(
+      "--id <id>",
+      "Id to launch under. Relaunching an id attaches to that runner",
+    )
+    .option("--name <family>", "Runner family to run, e.g. playwright")
+    .addHelpText("after", launchExamples)
+    .addHelpText("after", runnerGuides.launch)
+    .action((opts: { id?: string; name?: string }, command: Command) =>
+      withRunnerContext(signals, (ctx) =>
+        handleRunnerLaunch(
+          ctx,
+          { id: opts.id, name: opts.name },
+          runnerDeps(ctx),
+        ),
+      )(opts, command),
+    );
+
+  declareCommandKind(runner.command("list"), "read")
+    .description("List the runners running on your team")
+    .option(
+      "--here",
+      "Only the runners this directory launched or QAWOLF_RUNNER_ID names",
+    )
+    .addHelpText("after", listExamples)
+    .addHelpText("after", runnerGuides.list)
+    .action((opts: { here?: boolean }, command: Command) =>
+      withRunnerContext(signals, (ctx) =>
+        handleRunnerList(ctx, { here: opts.here === true }, runnerDeps(ctx)),
+      )(opts, command),
+    );
+
+  declareCommandKind(runner.command("terminate"), "write")
+    .description("End an interactive runner, and the pod it runs on with it")
+    .option("--runner <id>", runnerFlagDescription)
+    .addHelpText("after", runnerGuides.stopOrTerminate)
+    .action((opts: { runner?: string }, command: Command) =>
+      withRunnerContext(signals, (ctx) =>
+        handleRunnerTerminate(ctx, { runner: opts.runner }, runnerDeps(ctx)),
+      )(opts, command),
+    );
+
+  declareCommandKind(runner.command("stop-run"), "write")
+    .description(
+      "Stop what a runner is currently executing, leaving the runner up",
+    )
+    .option("--runner <id>", runnerFlagDescription)
+    .addHelpText("after", runnerGuides.stopOrTerminate)
+    .action((opts: { runner?: string }, command: Command) =>
+      withRunnerContext(signals, (ctx) =>
+        handleRunnerStopRun(ctx, { runner: opts.runner }, runnerDeps(ctx)),
+      )(opts, command),
+    );
+
+  declareCommandKind(runner.command("keepalive"), "read")
+    .description(
+      "Reset a runner's inactivity clock, for a caller that pauses between actions",
+    )
+    .option("--runner <id>", runnerFlagDescription)
+    .addHelpText("after", keepaliveExamples)
+    .addHelpText("after", runnerGuides.keepalive)
+    .action((opts: { runner?: string }, command: Command) =>
+      withRunnerContext(signals, (ctx) =>
+        handleRunnerKeepalive(ctx, { runner: opts.runner }, runnerDeps(ctx)),
+      )(opts, command),
+    );
+}

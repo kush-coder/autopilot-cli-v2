@@ -1,0 +1,52 @@
+import {
+  appiumVersion,
+  emailsVersion,
+  expectWebdriverioVersion,
+  flowsVersion,
+  playwrightVersion,
+  testkitVersion,
+  wdioGlobalsVersion,
+  wdioLoggerVersion,
+  webdriverioVersion,
+} from "~/generated/dependencyVersions.js";
+
+export type PinnedPackage = { name: string; version: string };
+
+/** Canonical list of pinned runtime packages the CLI installs and resolves from. */
+export const pinnedPackages: PinnedPackage[] = [
+  // @qawolf/flows, playwright and @qawolf/testkit are devDependencies of the CLI
+  // for the same reason as expect-webdriverio below: @qawolf/flows peer-requires
+  // expect-webdriverio 5.6.5, so as a dependency it brings that cycle back into
+  // `npm i @qawolf/cli`. The CLI only loads them from the dependency root.
+  { name: "@qawolf/flows", version: flowsVersion },
+  { name: "playwright", version: playwrightVersion },
+  { name: "@qawolf/emails", version: emailsVersion },
+  { name: "@qawolf/testkit", version: testkitVersion },
+  { name: "appium", version: appiumVersion },
+  // Peer dep of @qawolf/flows ≥0.1.4 — configureFlowRuntime imports it, and
+  // the --legacy-peer-deps install would otherwise never provide it.
+  //
+  // It must stay a devDependency of the CLI, never a dependency. expect-webdriverio
+  // peer-requires @wdio/globals@^9, and @wdio/globals ≥9.31.0 peer-requires
+  // expect-webdriverio@^6.0.5. A root-level pin of 5.6.5 therefore gives npm an
+  // unsatisfiable peer cycle, and `npm i @qawolf/cli` backtracks through every
+  // @wdio/globals 9.x release instead of failing fast — a 35+ minute CPU spin.
+  // Installing it here keeps it out of the consumer's resolution, and this
+  // managed install passes --legacy-peer-deps so the cycle is never explored.
+  { name: "expect-webdriverio", version: expectWebdriverioVersion },
+  // The Android runner loads webdriverio from the run's dependency root
+  // (loadWebdriverio); the npm bundle does not ship it, so this pin is what
+  // guarantees every dependency root has it. Same devDependency-only rule as
+  // expect-webdriverio above.
+  { name: "webdriverio", version: webdriverioVersion },
+  // expect-webdriverio's own peers. The managed install passes --legacy-peer-deps,
+  // which skips peers entirely, so without these `import("expect-webdriverio")`
+  // throws ERR_MODULE_NOT_FOUND on @wdio/logger. That import is what
+  // initializeMobileExpect performs, so mobile `expect` cannot work without them.
+  // It does not work with them either yet: runAndroidFlow never calls
+  // initFlowRuntime, and initFlowRuntime hardcodes platform "web", so
+  // configureFlowRuntime skips its mobile branch. This removes the first blocker
+  // only. They carry the same devDependency-only rule as expect-webdriverio above.
+  { name: "@wdio/globals", version: wdioGlobalsVersion },
+  { name: "@wdio/logger", version: wdioLoggerVersion },
+];

@@ -1,0 +1,225 @@
+import type { Command } from "commander";
+import { describe, expect, it } from "bun:test";
+
+import { makeNoopSignals } from "~/shell/signals/createSignalRegistry.fixtures.js";
+import { createProgram } from "./program.js";
+
+function buildProgram(): Command {
+  return createProgram({ signals: makeNoopSignals() }).configureHelp({
+    helpWidth: 80,
+  });
+}
+
+function findSub(parent: Command, name: string): Command {
+  const sub = parent.commands.find((c) => c.name() === name);
+  if (sub === undefined) throw new Error(`subcommand not found: ${name}`);
+  return sub;
+}
+
+function helpFor(...path: string[]): string {
+  let cmd = buildProgram();
+  for (const segment of path) cmd = findSub(cmd, segment);
+  // Merged, not replaced: a group can set its own help options, such as
+  // `runner` showing its --workspace-id on every subcommand.
+  cmd.configureHelp({ ...cmd.configureHelp(), helpWidth: 80 });
+  let buf = "";
+  cmd.configureOutput({
+    writeOut: (s) => {
+      buf += s;
+    },
+    writeErr: (s) => {
+      buf += s;
+    },
+  });
+  cmd.outputHelp();
+  return buf;
+}
+
+describe("--help output", () => {
+  it("qawolf", () => {
+    expect(helpFor()).toMatchSnapshot();
+  });
+
+  it("qawolf init", () => {
+    expect(helpFor("init")).toMatchSnapshot();
+  });
+
+  it("qawolf install", () => {
+    expect(helpFor("install")).toMatchSnapshot();
+  });
+
+  it("qawolf install browsers", () => {
+    expect(helpFor("install", "browsers")).toMatchSnapshot();
+  });
+
+  it("qawolf install android", () => {
+    expect(helpFor("install", "android")).toMatchSnapshot();
+  });
+
+  it("qawolf install clear", () => {
+    expect(helpFor("install", "clear")).toMatchSnapshot();
+  });
+
+  it("qawolf doctor", () => {
+    expect(helpFor("doctor")).toMatchSnapshot();
+  });
+
+  it("qawolf attempt", () => {
+    expect(helpFor("attempt")).toMatchSnapshot();
+  });
+
+  it("qawolf attempt investigate", () => {
+    expect(helpFor("attempt", "investigate")).toMatchSnapshot();
+  });
+
+  it("qawolf attempt inspect", () => {
+    expect(helpFor("attempt", "inspect")).toMatchSnapshot();
+  });
+
+  it("qawolf flows", () => {
+    expect(helpFor("flows")).toMatchSnapshot();
+  });
+
+  it("qawolf flows run", () => {
+    expect(helpFor("flows", "run")).toMatchSnapshot();
+  });
+
+  it("qawolf flows list", () => {
+    expect(helpFor("flows", "list")).toMatchSnapshot();
+  });
+
+  it("qawolf flows pull", () => {
+    expect(helpFor("flows", "pull")).toMatchSnapshot();
+  });
+
+  it("qawolf runner", () => {
+    expect(helpFor("runner")).toMatchSnapshot();
+  });
+
+  it("qawolf runner launch", () => {
+    expect(helpFor("runner", "launch")).toMatchSnapshot();
+  });
+
+  it("qawolf runner terminate", () => {
+    expect(helpFor("runner", "terminate")).toMatchSnapshot();
+  });
+
+  it("qawolf runner stop-run", () => {
+    expect(helpFor("runner", "stop-run")).toMatchSnapshot();
+  });
+
+  it("qawolf build upload", () => {
+    expect(helpFor("build", "upload")).toMatchSnapshot();
+  });
+
+  it("qawolf runner run", () => {
+    expect(helpFor("runner", "run")).toMatchSnapshot();
+  });
+
+  it("qawolf runner events", () => {
+    expect(helpFor("runner", "events")).toMatchSnapshot();
+  });
+
+  for (const path of [
+    ["record"],
+    ["record", "start"],
+    ["record", "stop"],
+    ["record", "status"],
+    ["record", "auto"],
+    ["list-recordings"],
+  ]) {
+    it(`qawolf runner ${path.join(" ")}`, () => {
+      expect(helpFor("runner", ...path)).toMatchSnapshot();
+    });
+  }
+
+  it("qawolf runner keepalive", () => {
+    expect(helpFor("runner", "keepalive")).toMatchSnapshot();
+  });
+
+  it("qawolf runner screenshot", () => {
+    expect(helpFor("runner", "screenshot")).toMatchSnapshot();
+  });
+
+  it("qawolf runner act", () => {
+    expect(helpFor("runner", "act")).toMatchSnapshot();
+  });
+
+  it("qawolf runner import-package", () => {
+    expect(helpFor("runner", "import-package")).toMatchSnapshot();
+  });
+
+  it("qawolf runner inspect", () => {
+    expect(helpFor("runner", "inspect")).toMatchSnapshot();
+  });
+
+  it("qawolf runner inspect element-html", () => {
+    expect(helpFor("runner", "inspect", "element-html")).toMatchSnapshot();
+  });
+
+  it("qawolf runner inspect page-html", () => {
+    expect(helpFor("runner", "inspect", "page-html")).toMatchSnapshot();
+  });
+
+  it("qawolf runner inspect variable", () => {
+    expect(helpFor("runner", "inspect", "variable")).toMatchSnapshot();
+  });
+
+  it("qawolf runner inspect session", () => {
+    expect(helpFor("runner", "inspect", "session")).toMatchSnapshot();
+  });
+
+  it("qawolf runner inspect contexts", () => {
+    expect(helpFor("runner", "inspect", "contexts")).toMatchSnapshot();
+  });
+
+  it("qawolf runner inspect page-source", () => {
+    expect(helpFor("runner", "inspect", "page-source")).toMatchSnapshot();
+  });
+
+  it("qawolf runner inspect elements", () => {
+    expect(helpFor("runner", "inspect", "elements")).toMatchSnapshot();
+  });
+
+  it("qawolf runner exec", () => {
+    expect(helpFor("runner", "exec")).toMatchSnapshot();
+  });
+
+  it("contains no em-dashes in any help text", () => {
+    const paths: string[][] = [
+      [],
+      ["init"],
+      ["install"],
+      ["install", "browsers"],
+      ["install", "android"],
+      ["install", "clear"],
+      ["doctor"],
+      ["flows"],
+      ["flows", "run"],
+      ["flows", "list"],
+      ["flows", "pull"],
+      ["runner"],
+      ["runner", "launch"],
+      ["runner", "terminate"],
+      ["runner", "stop-run"],
+      ["runner", "run"],
+      ["runner", "events"],
+      ["runner", "keepalive"],
+      ["runner", "screenshot"],
+      ["runner", "act"],
+      ["runner", "exec"],
+      ["runner", "import-package"],
+      ["runner", "inspect"],
+      ["runner", "inspect", "element-html"],
+      ["runner", "inspect", "page-html"],
+      ["runner", "inspect", "variable"],
+      ["runner", "inspect", "session"],
+      ["runner", "inspect", "contexts"],
+      ["runner", "inspect", "page-source"],
+      ["runner", "inspect", "elements"],
+    ];
+    for (const path of paths) {
+      expect(helpFor(...path)).not.toContain("—");
+    }
+  });
+});

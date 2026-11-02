@@ -1,0 +1,133 @@
+import { pluralize } from "~/core/pluralize.js";
+
+export const interactMessages = {
+  actionFailed: (errorMessage: string) =>
+    `The action reached the runner and did not take effect: ${errorMessage}`,
+  actionFlagsWithStdin:
+    '"-" reads the whole action from stdin, so an action flag passed alongside it would be ignored. Pipe the action in on its own, or name the action type and use flags.',
+  actionMayHaveHappened:
+    "The runner could not be reached, which does not mean the action was not performed: it may have stopped answering mid-action. Take a screenshot before repeating it.",
+  actionNotJson:
+    'Stdin did not hold a JSON action. Pipe one object, for example \'{"type":"click","button":"left","x":480,"y":260}\'.',
+  actionNotSupportedOnBrowser: (type: string) =>
+    `Only a mobile runner performs ${type}. On a browser runner, click at --x and --y, drag along a --path, and type into whatever has focus.`,
+  actionNotSupportedOnMobile: (type: string) =>
+    `A mobile runner has a touchscreen, so it cannot perform ${type} as asked. Use tap, swipe, fill, or type into whatever the last tap focused.`,
+  actionFailedScreenshotToStdout:
+    "Its screen was written to stdout as a JPEG, so look at that rather than sending the action again.",
+  actionFailedScreenshotUnwritten: (detail: string) =>
+    `Its screen could not be written, because ${detail}, so take one with qawolf runner screenshot rather than sending the action again.`,
+  actionFailedScreenshotWritten: (path: string) =>
+    `Its screen was written to ${path}, so look at that rather than sending the action again.`,
+  actionFailedWithoutScreenshot:
+    "The runner answered without a screen, so nothing was written; take one with qawolf runner screenshot rather than sending the action again.",
+  actionPerformed: (type: string) => `Performed ${type}.`,
+  actionPerformedScreenshotNotAnImage: (type: string) =>
+    `Performed ${type}, but the screen that came with the answer was not a JPEG, so nothing was written. The action took effect, so do not repeat it: take the screen with qawolf runner screenshot instead, and report it if it keeps happening.`,
+  actionPerformedScreenshotToStdout: (type: string) =>
+    `Performed ${type} and wrote the runner's screen to stdout as a JPEG. Stdout holds the image bytes alone; this line, and the JSON with --json, is on stderr.`,
+  actionPerformedScreenshotStdoutUnwritable: (type: string, detail: string) =>
+    `Performed ${type}, but its screen could not be written to stdout: ${detail}. The action took effect, so do not repeat it: keep the pipe reading stdout open, or take the screen with qawolf runner screenshot --out <file>.`,
+  actionPerformedScreenshotUnwritable: (
+    type: string,
+    path: string,
+    detail: string,
+  ) =>
+    `Performed ${type}, but its screen could not be written to "${path}": ${detail}. The action took effect, so do not repeat it: take the screen with qawolf runner screenshot, giving --out a path this process can write to.`,
+  actionPerformedScreenshotWritten: (type: string, path: string) =>
+    `Performed ${type} and wrote the runner's screen to ${path}.`,
+  actionPerformedWithoutScreenshot: (type: string) =>
+    `Performed ${type}, but the runner answered without the screen it was asked for. The action took effect, so do not repeat it: take the screen with qawolf runner screenshot instead. If this keeps happening, the platform or this CLI is behind the other: upgrade with npm install -g @qawolf/cli.`,
+  actionAnsweredUnknown: (failureReason: string) =>
+    `The runner answered "${failureReason}", which this version of the CLI does not know how to report. Upgrade with npm install -g @qawolf/cli.`,
+  screenshotAnsweredUnknown: (failureReason: string) =>
+    `The runner answered "${failureReason}", which this version of the CLI does not know how to report. Upgrade with npm install -g @qawolf/cli.`,
+  runnerHasNoScreen:
+    "This runner does not run a browser on a virtual desktop, so there is nothing about it to see or drive. Retrying will never help: launch a playwright runner instead.",
+  inspectNeedsABrowserRunner:
+    "This runner is a mobile device, and element and page HTML are a browser's shapes. Retrying will never help. Launch a playwright runner to inspect one.",
+  nothingToInspect: (errorMessage: string | undefined) =>
+    `The runner had nothing to inspect${errorMessage === undefined ? "" : `: ${errorMessage}`}. There is no live page, nothing matched the selector, or no variable has that name; a runner cannot tell those apart. Run a flow on it first, or check the selector or name.`,
+  inspectAnsweredUnknown: (failureReason: string) =>
+    `The runner answered "${failureReason}", which this version of the CLI does not know how to report. Upgrade with npm install -g @qawolf/cli.`,
+  inspectMobileAnsweredUnknown: (failureReason: string) =>
+    `The runner answered "${failureReason}", which this version of the CLI does not know how to report. Upgrade with npm install -g @qawolf/cli.`,
+  inspectMobileInvalidSelector:
+    "The runner could not parse that selector under the strategy it was given. Retrying it unchanged will never help: correct the selector, or pick the strategy that matches it.",
+  runnerIsNotMobile:
+    "This runner is not a mobile device, so there is nothing here to inspect. Retrying will never help: launch an android or ios runner instead.",
+  screenNeedsARun:
+    "This runner has not run anything yet, so its screen has never started. Waiting will not clear this and there is nothing to retry: run a flow on it with qawolf runner run, then ask again. Evaluating a snippet does not start a screen.",
+  screenNotReady:
+    "The runner has a screen and cannot serve this yet. Its virtual desktop restarts when a run changes the display size, and it serves one request at a time, so something already in flight is the usual reason. Retry in a second or two.",
+  screenshotNotAnImage:
+    "The screen was captured but did not arrive as a JPEG, so nothing was written. Nothing about the command needs changing: try it again, and report it if it keeps happening.",
+  stdoutIsATerminal: (flag: string) =>
+    `Stdout is a terminal, so the JPEG bytes would have nowhere to go. Redirect stdout to a file or pipe it into a reader, or give ${flag} a file path instead of "-".`,
+  screenshotStdoutUnwritable: (detail: string) =>
+    `The screen was captured but could not be written to stdout: ${detail}. Keep the pipe reading stdout open, or give --out a file path instead of "-".`,
+  screenshotUnwritable: (path: string, detail: string) =>
+    `The screen was captured but could not be written to "${path}": ${detail}. Give --out a path this process can write to.`,
+  screenshotWritten: (path: string) => `Wrote the runner's screen to ${path}.`,
+  screenshotWrittenToStdout:
+    "Wrote the runner's screen to stdout as a JPEG. Stdout holds the image bytes alone; this line, and the JSON with --json, is on stderr.",
+  snippetEmpty: (path: string) => `"${path}" holds no code to evaluate.`,
+  snippetErrored: (errorMessage: string | undefined) =>
+    errorMessage === undefined
+      ? "The snippet threw and reported no message."
+      : `The snippet threw: ${errorMessage}`,
+  snippetFileUnreadable: (path: string) =>
+    `Could not read "${path}". Name a readable file, or "-" to read the snippet from stdin.`,
+  snippetRan:
+    "The snippet ran. Its value is not returned: read anything it printed with qawolf runner events console.",
+  // Alone among these failure reasons, this one may have taken effect before its
+  // answer was lost, so the message must not invite a bare repeat.
+  snippetRunnerUnreachable:
+    "The runner could not be reached. It may still be starting, or it may have terminated after inactivity. It is not proof the snippet did not run: a snippet that outlives the answer window is still executing when you read this, so do not blindly resubmit one that mutates the page without reading qawolf runner events console first.",
+  snippetStopped:
+    "The snippet was interrupted before it finished. Anything it printed first is in qawolf runner events console.",
+  runnerCannotEvaluateSnippets:
+    "This runner has no snippet evaluator attached, so there is nothing to run code against. Retrying will never help: launch a playwright, android, ios, or windows runner instead.",
+  snippetAnsweredUnknown: (failureReason: string) =>
+    `The runner answered "${failureReason}", which this version of the CLI does not know how to report. Upgrade with npm install -g @qawolf/cli.`,
+  stdinEmptyAction:
+    'Nothing arrived on stdin. Pipe the action in, or name the action type instead of "-".',
+  stdinEmptySnippet:
+    'Nothing arrived on stdin. Pipe the snippet in, or name a file instead of "-".',
+  missingPackageJsonForImport:
+    "No package.json in the current directory. The install resolves against the run's own dependencies, which are read from one.",
+  packageInstalled: (name: string, version: string) =>
+    `Installed ${name}@${version} into the runner's live run.`,
+  packageJsonUnreadable: (reason: string) =>
+    `package.json could not be read because ${reason}. Fix it and try again.`,
+  installFailed: (
+    name: string,
+    version: string,
+    errorMessage: string | undefined,
+  ) =>
+    `npm could not install ${name}@${version}${errorMessage === undefined ? "" : `. ${errorMessage}`}. Check the name and the version; waiting will not change this.`,
+  importAnsweredUnknown: (failureReason: string) =>
+    `The runner answered "${failureReason}", which this version of the CLI does not know how to report. Upgrade with npm install -g @qawolf/cli.`,
+  highlightCleared:
+    "Cleared the runner's highlight. Its next screenshot shows the page undrawn on.",
+  highlightMatched: (matchCount: number, targetPage: string | undefined) =>
+    `Highlighted ${pluralize(matchCount, "element", "elements")}${targetPage === undefined ? "" : ` on ${targetPage}`}. The highlight stays until it is replaced or cleared, so take a screenshot to see it.`,
+  highlightMatchedNothing: (selector: string) =>
+    `The page read "${selector}" as a selector and nothing matched it, so nothing is highlighted. The selector is well formed, so this is the page rather than the syntax: check what is actually on it with qawolf runner inspect page-html.`,
+  highlightSelectorInvalid: (selector: string) =>
+    `The page could not read "${selector}" as a selector, so nothing was highlighted. This is the syntax rather than the page, and retrying will not change it.`,
+  highlightNoAnswer:
+    "The page did not answer, so nothing is highlighted. A highlight runs inside the page, so a page that is gone or part-way through navigating does not answer at all rather than answering slowly. Take a screenshot to see where the runner is, then try again.",
+  runnerCannotHighlightSelectors:
+    "This runner has no browser to draw on, so there is nothing to highlight. Retrying will never help: launch a playwright runner instead.",
+  highlightAnsweredUnknown: (failureReason: string) =>
+    `The runner answered "${failureReason}", which this version of the CLI does not know how to report. Upgrade with npm install -g @qawolf/cli.`,
+  snapshotPromoted: (screenshotPath: string, baselinePath: string) =>
+    `Promoted ${screenshotPath} to the baseline at ${baselinePath}.`,
+  snapshotNotFound: (screenshotPath: string) =>
+    `The run wrote no screenshot at "${screenshotPath}", so nothing was changed. The two paths have to be the ones an image diff reported: read them from the imageDiffArtifact entry on qawolf runner events run-events.`,
+  runnerCannotPromoteSnapshots:
+    "This runner stores no screenshots, so it holds no baseline to replace. Retrying will never help.",
+  promoteSnapshotAnsweredUnknown: (failureReason: string) =>
+    `The runner answered "${failureReason}", which this version of the CLI does not know how to report. Upgrade with npm install -g @qawolf/cli.`,
+} as const;

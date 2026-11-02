@@ -1,0 +1,234 @@
+import { publicContractsV1 } from "@qawolf/api-contracts/v1";
+import { describe, expect, it } from "bun:test";
+
+import { interactiveRunnerMessages } from "~/core/messages/index.js";
+
+import { announceRunner, resolveRunner } from "./resolveRunner.js";
+import { makeAuthCtx, makeTestDeps } from "./deps.testUtils.js";
+import { runnerCallOptions } from "./runnerCallOptions.js";
+
+const launched = {
+  url: "https://app.qawolf.com/acme/runners/cli-minted",
+  gpuAccelerated: false,
+  id: "cli-minted",
+  alreadyRunning: false as const,
+  outcome: "success" as const,
+  runnerName: "playwright" as const,
+};
+
+describe("resolveRunner", () => {
+  it("takes the flag over everything else", async () => {
+    const { callPublicApi, ctx } = makeAuthCtx();
+    const deps = makeTestDeps({ env: { QAWOLF_RUNNER_ID: "from-env" } });
+    await deps.store.writeDefaultRunnerId("from-store");
+
+    expect(
+      await resolveRunner(ctx, { autoLaunch: true, runner: "from-flag" }, deps),
+    ).toEqual({ runnerId: "from-flag", source: "flag", type: "resolved" });
+    expect(callPublicApi).not.toHaveBeenCalled();
+  });
+
+  it("takes the environment over the stored default", async () => {
+    const { ctx } = makeAuthCtx();
+    const deps = makeTestDeps({ env: { QAWOLF_RUNNER_ID: "from-env" } });
+    await deps.store.writeDefaultRunnerId("from-store");
+
+    expect(
+      await resolveRunner(ctx, { autoLaunch: true, runner: undefined }, deps),
+    ).toEqual({
+      runnerId: "from-env",
+      source: "environment",
+      type: "resolved",
+    });
+  });
+
+  it("falls back to the stored default", async () => {
+    const { ctx } = makeAuthCtx();
+    const deps = makeTestDeps();
+    await deps.store.writeDefaultRunnerId("from-store");
+
+    expect(
+      await resolveRunner(ctx, { autoLaunch: true, runner: undefined }, deps),
+    ).toEqual({ runnerId: "from-store", source: "stored", type: "resolved" });
+  });
+
+  it("ignores a blank environment variable", async () => {
+    const { ctx } = makeAuthCtx();
+    const deps = makeTestDeps({ env: { QAWOLF_RUNNER_ID: "  " } });
+    await deps.store.writeDefaultRunnerId("from-store");
+
+    expect(
+      await resolveRunner(ctx, { autoLaunch: true, runner: undefined }, deps),
+    ).toEqual({ runnerId: "from-store", source: "stored", type: "resolved" });
+  });
+
+  // The caller has to be able to tell a fresh browser from one it already set
+  // up, so a launch is reported as a launch rather than as a resolution.
+  it("launches one when nothing names a runner, and says it launched", async () => {
+    const { callPublicApi, ctx } = makeAuthCtx();
+    callPublicApi.mockResolvedValue({ ok: true, value: launched });
+    const deps = makeTestDeps();
+
+    expect(
+      await resolveRunner(ctx, { autoLaunch: true, runner: undefined }, deps),
+    ).toEqual({
+      runnerId: "cli-minted",
+      source: "launched",
+      type: "launched",
+      url: launched.url,
+    });
+
+    expect(callPublicApi).toHaveBeenCalledWith(
+      publicContractsV1.runner.launch,
+      { id: "cli-minted" },
+      runnerCallOptions,
+    );
+    expect(await deps.store.readDefaultRunnerId()).toBe("cli-minted");
+  });
+
+  // A command that launched its own runner is the one case where nobody chose
+  // the runner, so the whole line matters: what it started, that it bills until
+  // stopped, how to stop it, and where to find it.
+  it("says what it launched for a command, and what that costs", async () => {
+    const { callPublicApi, ctx, infos } = makeAuthCtx();
+    callPublicApi.mockResolvedValue({ ok: true, value: launched });
+
+    const resolved = await resolveRunner(
+      ctx,
+      { autoLaunch: true, runner: undefined },
+      makeTestDeps(),
+    );
+    if (resolved.type === "failed") throw Error(resolved.error);
+    announceRunner(ctx, resolved);
+
+    expect(infos()[0]).toBe(
+      `No runner was given, so launched ${launched.id} for this command. Its browser is fresh: nothing has been run on it and nothing is signed in. It bills until it is terminated or idles out, so terminate it with qawolf runner terminate --runner ${launched.id} when you are done. Its runner page is at ${launched.url}`,
+    );
+  });
+
+  it("refuses rather than launching when the caller asked it not to", async () => {
+    const { callPublicApi, ctx } = makeAuthCtx();
+
+    const resolved = await resolveRunner(
+      ctx,
+      { autoLaunch: false, runner: undefined },
+      makeTestDeps(),
+    );
+
+    expect(resolved).toEqual({
+      error: interactiveRunnerMessages.noRunnerId,
+      exitCode: 2,
+      type: "failed",
+    });
+    expect(callPublicApi).not.toHaveBeenCalled();
+  });
+
+  it("uses a command's own wording when it supplies one", async () => {
+    const { ctx } = makeAuthCtx();
+
+    const resolved = await resolveRunner(
+      ctx,
+      {
+        autoLaunch: false,
+        noRunnerIdMessage: "Launch one and open a page first.",
+        runner: undefined,
+      },
+      makeTestDeps(),
+    );
+
+    expect(resolved).toEqual({
+      error: "Launch one and open a page first.",
+      exitCode: 2,
+      type: "failed",
+    });
+  });
+
+  it("refuses an id the published schema does not admit", async () => {
+    const { ctx } = makeAuthCtx();
+
+    const resolved = await resolveRunner(
+      ctx,
+      { autoLaunch: true, runner: "Bad Id" },
+      makeTestDeps(),
+    );
+
+    expect(resolved.type).toBe("failed");
+  });
+
+  // The id is written before the request, not after: a launch that times out may
+  // still have created and billed a pod, and an id kept only on success would be
+  // lost exactly then, so the retry would mint a new one and pay twice.
+  it("remembers the minted id before it launches, so a lost answer cannot lose it", async () => {
+    const { callPublicApi, ctx } = makeAuthCtx();
+    callPublicApi.mockResolvedValue({
+      error: "request timed out after 15000ms",
+      mayHaveArrived: true,
+      ok: false,
+    });
+    const deps = makeTestDeps();
+
+    const resolved = await resolveRunner(
+      ctx,
+      { autoLaunch: true, runner: undefined },
+      deps,
+    );
+
+    expect(resolved).toMatchObject({ exitCode: 4, type: "failed" });
+    expect(await deps.store.readDefaultRunnerId()).toBe("cli-minted");
+  });
+
+  // A refusal is the server saying no pod exists under this id, so leaving it as
+  // the directory's default would point every later command at a runner that was
+  // never started.
+  it("forgets the minted id when the launch was refused", async () => {
+    const { callPublicApi, ctx } = makeAuthCtx();
+    callPublicApi.mockResolvedValue({
+      error: "already running a different image",
+      ok: false,
+    });
+    const deps = makeTestDeps();
+
+    await resolveRunner(ctx, { autoLaunch: true, runner: undefined }, deps);
+
+    expect(await deps.store.readDefaultRunnerId()).toBeUndefined();
+  });
+
+  // The server's own reason is the only thing that names which image the id is
+  // already running, so a refused auto-launch has to pass it on rather than
+  // leave the caller with a bare status code.
+  it("passes on the reason the server gave for refusing the launch", async () => {
+    const { callPublicApi, ctx } = makeAuthCtx();
+    callPublicApi.mockResolvedValue({
+      error: "QA Wolf API runner.launch request failed (HTTP 409).",
+      errorBody:
+        "runner cli-minted is already running basic; stop it before launching android",
+      ok: false,
+    });
+
+    const resolved = await resolveRunner(
+      ctx,
+      { autoLaunch: true, runner: undefined },
+      makeTestDeps(),
+    );
+
+    expect(
+      resolved.type === "failed" ? resolved.errorBody : undefined,
+    ).toContain("already running basic");
+    expect(resolved).toMatchObject({ exitCode: 4, type: "failed" });
+  });
+
+  it("names the runner it was launching when the launch fails", async () => {
+    const { callPublicApi, ctx } = makeAuthCtx();
+    callPublicApi.mockResolvedValue({ ok: false, error: "apex unreachable" });
+
+    const resolved = await resolveRunner(
+      ctx,
+      { autoLaunch: true, runner: undefined },
+      makeTestDeps(),
+    );
+
+    expect(resolved.type === "failed" && resolved.error).toContain(
+      "cli-minted",
+    );
+  });
+});

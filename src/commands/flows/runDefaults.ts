@@ -1,0 +1,118 @@
+import { buildPatternArgs } from "~/core/patternArgs.js";
+import type { FlowSelectors } from "~/core/flowSelectors.js";
+import { environmentsMessages, runnerMessages } from "~/core/messages/index.js";
+import { pluralize } from "~/core/pluralize.js";
+import { expandPatterns as defaultExpandPatterns } from "~/domains/flows/expand.js";
+import { readCachedTags as defaultReadCachedTags } from "~/domains/flows/readCachedTags.js";
+import { readEnvLabel as defaultReadEnvLabel } from "~/domains/flows/readEnvLabel.js";
+import { resolveEnvChoice } from "~/domains/flows/resolveEnvChoice.js";
+import { exitCodes } from "~/shell/exit.js";
+import { flowsRun as defaultFlowsRun } from "~/domains/runner/run.js";
+import { noMatchResult } from "~/domains/runner/noMatch.js";
+import type { FlowsRunFlags } from "~/domains/runner/runInternals.js";
+import { defaultRunWebFlowDeps } from "~/domains/runner/runWebFlowDeps.js";
+import { prepareRunDir as defaultPrepareRunDir } from "~/domains/runtimeEnv/prepareRunDir.js";
+import type { CommandContext, CommandResult } from "~/shell/commandContext.js";
+import type { Fs } from "~/shell/fs.js";
+import type { Logger } from "~/shell/logger.js";
+import { configureTestkit as defaultConfigureTestkit } from "~/shell/testkit.js";
+import { resolveDepsRoot } from "~/commands/resolveDepsRoot.js";
+
+import { createFlowRuntimeDeps as defaultCreateFlowRuntimeDeps } from "./flowRuntimeDeps.js";
+import { selectRunByTag } from "~/domains/flows/selectRunByTag.js";
+import { type StagedRunDeps, runStagedFlows } from "./runStagedFlows.js";
+
+export type HandleFlowsRunDeps = StagedRunDeps & {
+  expandPatterns: (
+    patterns: string[],
+    cwd: string,
+    logger?: Logger,
+  ) => Promise<string[]>;
+};
+
+function makeDefaultDeps(fs: Fs): HandleFlowsRunDeps {
+  return {
+    expandPatterns: (patterns, cwd, logger) =>
+      defaultExpandPatterns(patterns, cwd, logger, fs),
+    resolveDepsRoot: (args) => resolveDepsRoot({ ...args, fs }),
+    prepareRunDir: (args) => defaultPrepareRunDir({ ...args, fs }),
+    configureTestkit: defaultConfigureTestkit,
+    runWebFlowDeps: defaultRunWebFlowDeps,
+    createFlowRuntimeDeps: defaultCreateFlowRuntimeDeps,
+    flowsRun: defaultFlowsRun,
+  };
+}
+
+export async function handleFlowsRun(
+  ctx: CommandContext,
+  pattern: string | undefined,
+  flags: FlowsRunFlags,
+  deps?: HandleFlowsRunDeps,
+  selectors: FlowSelectors = { tags: [] },
+  allEnvs = false,
+): Promise<CommandResult> {
+  const resolvedDeps = deps ?? makeDefaultDeps(ctx.fs);
+  const cwd = process.cwd();
+
+  const expandedFiles = await resolvedDeps.expandPatterns(
+    buildPatternArgs(pattern),
+    cwd,
+    ctx.log("flows"),
+  );
+  ctx
+    .log("flows")
+    .debug(`discovered ${pluralize(expandedFiles.length, "flow")}`);
+
+  if (expandedFiles.length === 0) {
+    return noMatchResult(ctx, {
+      allowNoMatch: flags.allowNoMatch,
+      error: runnerMessages.noFlowsMatchedPattern(pattern),
+      notice: runnerMessages.noFlowsMatched,
+    });
+  }
+
+  const selected = await selectRunByTag({
+    files: expandedFiles,
+    selectors,
+    readCachedTags: (files) => defaultReadCachedTags(files, ctx.fs),
+    chooseEnv: (files) => chooseEnv(ctx, files, allEnvs),
+    noMatch: (error) =>
+      noMatchResult(ctx, {
+        allowNoMatch: flags.allowNoMatch,
+        error,
+        notice: runnerMessages.noFlowsMatched,
+      }),
+  });
+  if (!selected.ok) return selected.result;
+
+  return runStagedFlows({
+    ctx,
+    files: selected.files,
+    flags,
+    deps: resolvedDeps,
+  });
+}
+
+/**
+ * Resolves which pulled environment a tag selection meant, prompting a human
+ * and reporting an error to everyone else.
+ */
+async function chooseEnv(
+  ctx: CommandContext,
+  files: string[],
+  allEnvs: boolean,
+): Promise<{ proceed: string[] } | { stop: CommandResult }> {
+  const choice = await resolveEnvChoice({
+    files,
+    allEnvs,
+    mode: ctx.ui.mode,
+    select: ctx.ui.select,
+    readLabel: (dir) => defaultReadEnvLabel(dir, ctx.fs),
+  });
+  if (choice.kind === "proceed") return { proceed: choice.files };
+  if (choice.kind === "cancelled") {
+    ctx.ui.info(environmentsMessages.aborted);
+    return { stop: undefined };
+  }
+  return { stop: { error: choice.error, exitCode: exitCodes.invalidArgs } };
+}

@@ -1,0 +1,68 @@
+import { randomUUID } from "node:crypto";
+import { sleep as defaultSleep } from "~/core/sleep.js";
+import type { Fs } from "~/shell/fs.js";
+import {
+  type CollectedRunFiles,
+  collectRunFiles,
+} from "~/shell/interactiveRunner/collectRunFiles.js";
+import { makeRunnerId } from "~/shell/interactiveRunner/makeRunnerId.js";
+import {
+  type RunFilesManifestStore,
+  makeRunFilesManifestStore,
+} from "~/shell/interactiveRunner/runFilesManifest.js";
+import {
+  type RunnerStore,
+  makeRunnerStore,
+} from "~/shell/interactiveRunner/runnerStore.js";
+import {
+  type ScreenshotWrite,
+  writeScreenshot,
+} from "~/shell/interactiveRunner/writeScreenshot.js";
+import { readStdin } from "~/shell/stdin.js";
+
+/**
+ * Everything about the machine these handlers touch, in one injectable bundle
+ * so that a test drives them with an in-memory filesystem, a fixed id, piped
+ * input it chose and a sleep that does not wait.
+ */
+export type InteractiveRunnerDeps = {
+  collectRunFiles: (roots: readonly string[]) => Promise<CollectedRunFiles>;
+  cwd: string;
+  env: Record<string, string | undefined>;
+  makeRunnerId: () => string;
+  makeRecordingId: () => string;
+  readFile: (path: string) => Promise<string>;
+  readStdin: () => Promise<string>;
+  runFilesManifest: RunFilesManifestStore;
+  sleep: (ms: number) => Promise<void>;
+  store: RunnerStore;
+  writeScreenshot: (options: {
+    imageJpegBase64: string;
+    path: string;
+  }) => Promise<ScreenshotWrite>;
+};
+
+export function makeInteractiveRunnerDeps(options: {
+  cwd: string;
+  env: Record<string, string | undefined>;
+  fs: Fs;
+}): InteractiveRunnerDeps {
+  return {
+    collectRunFiles: (roots) =>
+      collectRunFiles({ cwd: options.cwd, fs: options.fs, roots }),
+    cwd: options.cwd,
+    env: options.env,
+    makeRunnerId,
+    makeRecordingId: randomUUID,
+    readFile: (path) => options.fs.readFile(path),
+    readStdin,
+    runFilesManifest: makeRunFilesManifestStore({
+      cwd: options.cwd,
+      fs: options.fs,
+    }),
+    sleep: defaultSleep,
+    store: makeRunnerStore({ cwd: options.cwd, fs: options.fs }),
+    writeScreenshot: (screenshot) =>
+      writeScreenshot({ ...screenshot, fs: options.fs }),
+  };
+}

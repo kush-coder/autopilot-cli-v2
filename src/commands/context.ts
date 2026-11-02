@@ -1,0 +1,193 @@
+// oxlint-disable eslint/max-lines -- threading ctx.fs through auth context added 3 lines; extracting withAuthContext would be premature
+import type { Command } from "commander";
+import { errorMessage } from "~/core/errors.js";
+import { authMessages } from "~/core/messages/index.js";
+import { getConfigDir } from "~/core/paths.js";
+import { exitCodes } from "~/shell/exit.js";
+import { makeDefaultFs } from "~/shell/fs.js";
+import { resolveHostUrl } from "~/shell/resolveHostUrl.js";
+import { requireApiKey } from "~/domains/auth/index.js";
+import {
+  createLoggingSystem,
+  defaultLogPath,
+  resolveStderrLevel,
+  type LoggingSystem,
+} from "~/shell/logger.js";
+import { createPlatformClient } from "~/shell/platform/createPlatformClient.js";
+import type { SignalRegistry } from "~/shell/signals/createSignalRegistry.js";
+import {
+  type OutputFlags,
+  detectOutputMode,
+  isInteractive,
+} from "~/shell/ui/env.js";
+import { createUI } from "~/shell/ui/index.js";
+import { createVerboseContext } from "~/shell/ui/createVerboseContext.js";
+import type {
+  AuthCommandContext,
+  CommandContext,
+  CommandResult,
+} from "~/shell/commandContext.js";
+import { fetchLatestVersion } from "~/shell/npmRegistry.js";
+import {
+  startUpdateCheck,
+  type UpdateNotifier,
+} from "~/domains/updateCheck/updateCheck.js";
+import packageJson from "../../package.json" with { type: "json" };
+
+type ContextAction = (ctx: CommandContext) => Promise<CommandResult>;
+type AuthContextAction = (ctx: AuthCommandContext) => Promise<CommandResult>;
+type GlobalFlags = OutputFlags & { verbose?: boolean };
+
+export function buildBaseContext(
+  command: Command,
+  signals: SignalRegistry,
+): {
+  ctx: CommandContext;
+  apiBaseUrl: string;
+  loggingSystem: LoggingSystem;
+  updateNotifier: UpdateNotifier;
+} {
+  const env = process.env;
+  const flags = command.optsWithGlobals<GlobalFlags>();
+  const outputMode = detectOutputMode({
+    flags,
+    env,
+    stdoutIsTTY: Boolean(process.stdout.isTTY),
+  });
+  const stderrLevel =
+    outputMode === "agent"
+      ? "silent"
+      : resolveStderrLevel(env, Boolean(flags.verbose));
+  const { clack, verboseTarget, verboseWrite } = createVerboseContext(
+    outputMode,
+    stderrLevel !== "silent",
+  );
+  const loggingSystem = createLoggingSystem({
+    stderrLevel,
+    logPath: defaultLogPath(),
+    ...(verboseWrite ? { verboseWrite } : {}),
+  });
+  const apiBaseUrl = resolveHostUrl(env);
+  const fs = makeDefaultFs();
+  const ui = createUI(outputMode, {
+    clack,
+    ...(verboseTarget ? { verboseTarget } : {}),
+  });
+  const updateNotifier = startUpdateCheck({
+    env,
+    currentVersion: packageJson.version,
+    configDir: getConfigDir(),
+    fs,
+    fetchLatestVersion: (signal) =>
+      fetchLatestVersion(packageJson.name, { signal }),
+    renderNotice: (body, title) => ui.note(body, title),
+  });
+  return {
+    ctx: {
+      ui,
+      configDir: getConfigDir(),
+      outputMode,
+      isInteractive: isInteractive({
+        stdinIsTTY: Boolean(process.stdin.isTTY),
+        env,
+      }),
+      apiBaseUrl,
+      signals,
+      log: (scope) => loggingSystem.createLogger(scope),
+      fs,
+    },
+    apiBaseUrl,
+    loggingSystem,
+    updateNotifier,
+  };
+}
+
+export function withContext(
+  signals: SignalRegistry,
+  fn: ContextAction,
+): (opts: unknown, command: Command) => Promise<void> {
+  return async (_opts: unknown, command: Command): Promise<void> => {
+    const { ctx, loggingSystem, updateNotifier } = buildBaseContext(
+      command,
+      signals,
+    );
+    try {
+      const result = await fn(ctx);
+      if (result !== undefined) {
+        ctx.ui.error(result.error, result.errorBody);
+        process.exitCode = result.exitCode ?? 1;
+      }
+    } catch (err: unknown) {
+      ctx.ui.error(errorMessage(err));
+      process.exitCode = 1;
+    } finally {
+      loggingSystem.flush();
+      await updateNotifier.notifyIfOutdated();
+    }
+  };
+}
+
+export function withAuthContext(
+  signals: SignalRegistry,
+  fn: AuthContextAction,
+  deps: {
+    requireApiKey?: typeof requireApiKey;
+    createPlatform?: typeof createPlatformClient;
+    /**
+     * The workspace this one command works in, ahead of the one
+     * `qawolf auth switch` saved. Never written back, so concurrent sessions
+     * on one machine can each name their own.
+     */
+    workspaceId?: string | undefined;
+  } = {},
+): (opts: unknown, command: Command) => Promise<void> {
+  return async (_opts: unknown, command: Command): Promise<void> => {
+    const { ctx, apiBaseUrl, loggingSystem, updateNotifier } = buildBaseContext(
+      command,
+      signals,
+    );
+    const resolved = await (deps.requireApiKey ?? requireApiKey)(
+      ctx.configDir,
+      ctx.fs,
+    ).catch((err: unknown) => {
+      ctx.ui.error(authMessages.notAuthenticated, errorMessage(err));
+      process.exitCode = exitCodes.auth;
+      return undefined;
+    });
+    if (resolved === undefined) {
+      loggingSystem.flush();
+      await updateNotifier.notifyIfOutdated();
+      return;
+    }
+
+    const platformClient = (deps.createPlatform ?? createPlatformClient)(
+      resolved.key,
+      {
+        baseUrl: apiBaseUrl,
+        fetch: globalThis.fetch,
+        logger: ctx.log("trpc"),
+        // A browser session names its workspace on every request; an API key
+        // carries its team, so it sends none unless the command names one.
+        workspaceId: deps.workspaceId ?? resolved.workspaceId,
+      },
+    );
+
+    try {
+      const result = await fn({
+        ...ctx,
+        platformClient,
+        apiKeySource: resolved.source,
+      });
+      if (result !== undefined) {
+        ctx.ui.error(result.error, result.errorBody);
+        process.exitCode = result.exitCode ?? 1;
+      }
+    } catch (err: unknown) {
+      ctx.ui.error(errorMessage(err));
+      process.exitCode = 1;
+    } finally {
+      loggingSystem.flush();
+      await updateNotifier.notifyIfOutdated();
+    }
+  };
+}

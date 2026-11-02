@@ -1,0 +1,1012 @@
+{
+  "plugins": ["eslint", "typescript", "oxc", "import", "unicorn"],
+  "jsPlugins": ["./scripts/oxlintPluginLocal.js"],
+  "rules": {
+    "local/require-js-extension": "error",
+    "eslint/no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["../*"],
+            "message": "Use \"~/\" path alias instead of relative parent imports."
+          },
+          {
+            "group": ["bun", "bun:*"],
+            "message": "Bun module imports are not available in the nodejs build \u2014 use a portable alternative."
+          }
+        ]
+      }
+    ],
+    "eslint/max-lines": [
+      "error",
+      {
+        "max": 150
+      }
+    ],
+    "eslint/no-restricted-globals": [
+      "error",
+      {
+        "name": "Bun",
+        "message": "Bun global is not available in the nodejs build \u2014 use a Bun-compatible API or guard with typeof Bun !== 'undefined'."
+      }
+    ],
+    "eslint/eqeqeq": "error",
+    "eslint/no-case-declarations": "error",
+    "eslint/no-empty": "error",
+    "eslint/no-else-return": "error",
+    "eslint/no-fallthrough": "error",
+    "eslint/no-new-wrappers": "error",
+    "eslint/no-prototype-builtins": "error",
+    "eslint/no-redeclare": "error",
+    "eslint/no-regex-spaces": "error",
+    "eslint/no-unexpected-multiline": "error",
+    "eslint/no-useless-computed-key": "error",
+    "eslint/no-var": "error",
+    "eslint/object-shorthand": "error",
+    "eslint/operator-assignment": "error",
+    "eslint/prefer-const": "error",
+    "eslint/prefer-object-spread": "error",
+    "eslint/preserve-caught-error": "error",
+    "eslint/yoda": "error",
+    "typescript/array-type": "error",
+    "typescript/consistent-type-definitions": ["error", "type"],
+    "typescript/consistent-type-imports": "error",
+    "typescript/no-extraneous-class": "error",
+    "typescript/no-unnecessary-template-expression": "error",
+    "typescript/no-unnecessary-type-arguments": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/prefer-includes": "error",
+    "typescript/prefer-ts-expect-error": "error",
+    "typescript/return-await": "error",
+    "import/extensions": [
+      "error",
+      "ignorePackages",
+      {
+        "ts": "never",
+        "js": "always"
+      }
+    ],
+    "unicorn/filename-case": [
+      "error",
+      {
+        "case": "camelCase"
+      }
+    ],
+    "unicorn/no-instanceof-array": "error",
+    "unicorn/no-null": "error",
+    "unicorn/no-typeof-undefined": "error",
+    "unicorn/no-useless-promise-resolve-reject": "error",
+    "unicorn/prefer-array-some": "error",
+    "unicorn/prefer-node-protocol": "error",
+    "unicorn/prefer-optional-catch-binding": "error",
+    "unicorn/prefer-string-trim-start-end": "error",
+    "typescript/ban-ts-comment": "error",
+    "typescript/consistent-type-exports": "error",
+    "typescript/no-deprecated": "error",
+    "typescript/no-empty-object-type": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/no-require-imports": "error",
+    "typescript/no-unnecessary-type-constraint": "error",
+    "typescript/no-unsafe-argument": "error",
+    "typescript/no-unsafe-assignment": "error",
+    "typescript/no-unsafe-enum-comparison": "error",
+    "typescript/no-unsafe-function-type": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/only-throw-error": "error",
+    "typescript/prefer-promise-reject-errors": "error",
+    "typescript/restrict-plus-operands": "error",
+    "typescript/switch-exhaustiveness-check": "error"
+  },
+  "options": {
+    "typeAware": true
+  },
+  "ignorePatterns": [
+    "dist/",
+    "node_modules/",
+    "knip.config.ts",
+    "test/exit/",
+    "test/node20/",
+    "test/spawn/",
+    "test/testkit/",
+    "test/worker/"
+  ],
+  "overrides": [
+    {
+      "files": ["src/commands/runner/*.register.ts"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "~/commands/context.js",
+                "importNames": ["withAuthContext"],
+                "message": "Runner commands use withRunnerContext from ./context.js, which honours the runner group's --workspace-id. withAuthContext would accept the flag and ignore it."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["../*"],
+                "message": "Use \"~/\" path alias instead of relative parent imports."
+              },
+              {
+                "group": ["bun", "bun:*"],
+                "message": "Bun module imports are not available in the nodejs build \u2014 use a portable alternative."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/core/**/*.ts"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../*"],
+                "message": "Use \"~/\" path alias instead of relative parent imports."
+              },
+              {
+                "group": ["bun", "bun:*"],
+                "message": "Bun module imports are not available in the nodejs build \u2014 use a portable alternative."
+              },
+              {
+                "group": ["~/shell/*", "~/shell/**"],
+                "message": "core/ must not import from shell/ \u2014 keep core/ pure."
+              },
+              {
+                "group": ["~/domains/*", "~/domains/**"],
+                "message": "core/ must not import from domains/."
+              },
+              {
+                "group": ["~/commands/*", "~/commands/**"],
+                "message": "core/ must not import from commands/."
+              },
+              {
+                "group": ["node:fs", "fs", "node:fs/promises", "fs/promises"],
+                "message": "core/ must not import node:fs \u2014 keep core/ pure."
+              },
+              {
+                "group": ["node:child_process", "child_process"],
+                "message": "core/ must not import node:child_process \u2014 keep core/ pure."
+              },
+              {
+                "group": ["node:readline", "readline"],
+                "message": "core/ must not import node:readline \u2014 keep core/ pure."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/shell/**/*.ts"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../*"],
+                "message": "Use \"~/\" path alias instead of relative parent imports."
+              },
+              {
+                "group": ["bun", "bun:*"],
+                "message": "Bun module imports are not available in the nodejs build \u2014 use a portable alternative."
+              },
+              {
+                "group": ["~/domains/*", "~/domains/**"],
+                "message": "shell/ must not import from domains/."
+              },
+              {
+                "group": ["~/commands/*", "~/commands/**"],
+                "message": "shell/ must not import from commands/."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/domains/auth/**/*.ts"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../*"],
+                "message": "Use \"~/\" path alias instead of relative parent imports."
+              },
+              {
+                "group": ["bun", "bun:*"],
+                "message": "Bun module imports are not available in the nodejs build \u2014 use a portable alternative."
+              },
+              {
+                "group": ["~/commands/*", "~/commands/**"],
+                "message": "domains/ must not import from commands/."
+              },
+              {
+                "group": ["~/domains/config/*", "~/domains/config/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/doctor/*", "~/domains/doctor/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/emails/*", "~/domains/emails/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/flows/*", "~/domains/flows/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/install/*", "~/domains/install/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": [
+                  "~/domains/interactiveRunner/*",
+                  "~/domains/interactiveRunner/**"
+                ],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/runner/*", "~/domains/runner/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/publicApi/*", "~/domains/publicApi/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["node:fs", "fs", "node:fs/promises", "fs/promises"],
+                "message": "domains/ must not import node:fs \u2014 file I/O belongs in shell/."
+              },
+              {
+                "group": ["node:child_process", "child_process"],
+                "message": "domains/ must not import node:child_process \u2014 use SpawnFn from shell/spawn.js."
+              },
+              {
+                "group": ["node:readline", "readline"],
+                "message": "domains/ must not import node:readline \u2014 use UI from shell/ui/."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/domains/config/**/*.ts"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../*"],
+                "message": "Use \"~/\" path alias instead of relative parent imports."
+              },
+              {
+                "group": ["bun", "bun:*"],
+                "message": "Bun module imports are not available in the nodejs build \u2014 use a portable alternative."
+              },
+              {
+                "group": ["~/commands/*", "~/commands/**"],
+                "message": "domains/ must not import from commands/."
+              },
+              {
+                "group": ["~/domains/auth/*", "~/domains/auth/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/doctor/*", "~/domains/doctor/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/emails/*", "~/domains/emails/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/flows/*", "~/domains/flows/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/install/*", "~/domains/install/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": [
+                  "~/domains/interactiveRunner/*",
+                  "~/domains/interactiveRunner/**"
+                ],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/runner/*", "~/domains/runner/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/publicApi/*", "~/domains/publicApi/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["node:fs", "fs", "node:fs/promises", "fs/promises"],
+                "message": "domains/ must not import node:fs \u2014 file I/O belongs in shell/."
+              },
+              {
+                "group": ["node:child_process", "child_process"],
+                "message": "domains/ must not import node:child_process \u2014 use SpawnFn from shell/spawn.js."
+              },
+              {
+                "group": ["node:readline", "readline"],
+                "message": "domains/ must not import node:readline \u2014 use UI from shell/ui/."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/domains/doctor/**/*.ts"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../*"],
+                "message": "Use \"~/\" path alias instead of relative parent imports."
+              },
+              {
+                "group": ["bun", "bun:*"],
+                "message": "Bun module imports are not available in the nodejs build \u2014 use a portable alternative."
+              },
+              {
+                "group": ["~/commands/*", "~/commands/**"],
+                "message": "domains/ must not import from commands/."
+              },
+              {
+                "group": ["~/domains/auth/*", "~/domains/auth/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/config/*", "~/domains/config/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/emails/*", "~/domains/emails/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/flows/*", "~/domains/flows/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/install/*", "~/domains/install/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": [
+                  "~/domains/interactiveRunner/*",
+                  "~/domains/interactiveRunner/**"
+                ],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/runner/*", "~/domains/runner/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/publicApi/*", "~/domains/publicApi/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["node:fs", "fs", "node:fs/promises", "fs/promises"],
+                "message": "domains/ must not import node:fs \u2014 file I/O belongs in shell/."
+              },
+              {
+                "group": ["node:child_process", "child_process"],
+                "message": "domains/ must not import node:child_process \u2014 use SpawnFn from shell/spawn.js."
+              },
+              {
+                "group": ["node:readline", "readline"],
+                "message": "domains/ must not import node:readline \u2014 use UI from shell/ui/."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/domains/emails/**/*.ts"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../*"],
+                "message": "Use \"~/\" path alias instead of relative parent imports."
+              },
+              {
+                "group": ["bun", "bun:*"],
+                "message": "Bun module imports are not available in the nodejs build \u2014 use a portable alternative."
+              },
+              {
+                "group": ["~/commands/*", "~/commands/**"],
+                "message": "domains/ must not import from commands/."
+              },
+              {
+                "group": ["~/domains/auth/*", "~/domains/auth/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/config/*", "~/domains/config/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/doctor/*", "~/domains/doctor/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/flows/*", "~/domains/flows/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/install/*", "~/domains/install/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": [
+                  "~/domains/interactiveRunner/*",
+                  "~/domains/interactiveRunner/**"
+                ],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/runner/*", "~/domains/runner/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/publicApi/*", "~/domains/publicApi/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["node:fs", "fs", "node:fs/promises", "fs/promises"],
+                "message": "domains/ must not import node:fs \u2014 file I/O belongs in shell/."
+              },
+              {
+                "group": ["node:child_process", "child_process"],
+                "message": "domains/ must not import node:child_process \u2014 use SpawnFn from shell/spawn.js."
+              },
+              {
+                "group": ["node:readline", "readline"],
+                "message": "domains/ must not import node:readline \u2014 use UI from shell/ui/."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/domains/flows/**/*.ts"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../*"],
+                "message": "Use \"~/\" path alias instead of relative parent imports."
+              },
+              {
+                "group": ["bun", "bun:*"],
+                "message": "Bun module imports are not available in the nodejs build \u2014 use a portable alternative."
+              },
+              {
+                "group": ["~/commands/*", "~/commands/**"],
+                "message": "domains/ must not import from commands/."
+              },
+              {
+                "group": ["~/domains/auth/*", "~/domains/auth/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/config/*", "~/domains/config/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/doctor/*", "~/domains/doctor/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/emails/*", "~/domains/emails/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/install/*", "~/domains/install/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": [
+                  "~/domains/interactiveRunner/*",
+                  "~/domains/interactiveRunner/**"
+                ],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/runner/*", "~/domains/runner/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/publicApi/*", "~/domains/publicApi/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["node:fs", "fs", "node:fs/promises", "fs/promises"],
+                "message": "domains/ must not import node:fs \u2014 file I/O belongs in shell/."
+              },
+              {
+                "group": ["node:child_process", "child_process"],
+                "message": "domains/ must not import node:child_process \u2014 use SpawnFn from shell/spawn.js."
+              },
+              {
+                "group": ["node:readline", "readline"],
+                "message": "domains/ must not import node:readline \u2014 use UI from shell/ui/."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/domains/install/**/*.ts"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../*"],
+                "message": "Use \"~/\" path alias instead of relative parent imports."
+              },
+              {
+                "group": ["bun", "bun:*"],
+                "message": "Bun module imports are not available in the nodejs build \u2014 use a portable alternative."
+              },
+              {
+                "group": ["~/commands/*", "~/commands/**"],
+                "message": "domains/ must not import from commands/."
+              },
+              {
+                "group": ["~/domains/auth/*", "~/domains/auth/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/config/*", "~/domains/config/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/doctor/*", "~/domains/doctor/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/emails/*", "~/domains/emails/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/flows/*", "~/domains/flows/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": [
+                  "~/domains/interactiveRunner/*",
+                  "~/domains/interactiveRunner/**"
+                ],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/runner/*", "~/domains/runner/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/publicApi/*", "~/domains/publicApi/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["node:fs", "fs", "node:fs/promises", "fs/promises"],
+                "message": "domains/ must not import node:fs \u2014 file I/O belongs in shell/."
+              },
+              {
+                "group": ["node:child_process", "child_process"],
+                "message": "domains/ must not import node:child_process \u2014 use SpawnFn from shell/spawn.js."
+              },
+              {
+                "group": ["node:readline", "readline"],
+                "message": "domains/ must not import node:readline \u2014 use UI from shell/ui/."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/domains/publicApi/**/*.ts"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../*"],
+                "message": "Use \"~/\" path alias instead of relative parent imports."
+              },
+              {
+                "group": ["bun", "bun:*"],
+                "message": "Bun module imports are not available in the nodejs build \u2014 use a portable alternative."
+              },
+              {
+                "group": ["~/commands/*", "~/commands/**"],
+                "message": "domains/ must not import from commands/."
+              },
+              {
+                "group": ["~/domains/auth/*", "~/domains/auth/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/config/*", "~/domains/config/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/doctor/*", "~/domains/doctor/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/emails/*", "~/domains/emails/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/flows/*", "~/domains/flows/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/install/*", "~/domains/install/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": [
+                  "~/domains/interactiveRunner/*",
+                  "~/domains/interactiveRunner/**"
+                ],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/runner/*", "~/domains/runner/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["node:fs", "fs", "node:fs/promises", "fs/promises"],
+                "message": "domains/ must not import node:fs \u2014 file I/O belongs in shell/."
+              },
+              {
+                "group": ["node:child_process", "child_process"],
+                "message": "domains/ must not import node:child_process \u2014 use SpawnFn from shell/spawn.js."
+              },
+              {
+                "group": ["node:readline", "readline"],
+                "message": "domains/ must not import node:readline \u2014 use UI from shell/ui/."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/domains/interactiveRunner/**/*.ts"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../*"],
+                "message": "Use \"~/\" path alias instead of relative parent imports."
+              },
+              {
+                "group": ["bun", "bun:*"],
+                "message": "Bun module imports are not available in the nodejs build \u2014 use a portable alternative."
+              },
+              {
+                "group": ["~/commands/*", "~/commands/**"],
+                "message": "domains/ must not import from commands/."
+              },
+              {
+                "group": ["~/domains/auth/*", "~/domains/auth/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/config/*", "~/domains/config/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/doctor/*", "~/domains/doctor/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/emails/*", "~/domains/emails/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/flows/*", "~/domains/flows/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/install/*", "~/domains/install/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/publicApi/*", "~/domains/publicApi/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/runner/*", "~/domains/runner/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["node:fs", "fs", "node:fs/promises", "fs/promises"],
+                "message": "domains/ must not import node:fs \u2014 file I/O belongs in shell/."
+              },
+              {
+                "group": ["node:child_process", "child_process"],
+                "message": "domains/ must not import node:child_process \u2014 use SpawnFn from shell/spawn.js."
+              },
+              {
+                "group": ["node:readline", "readline"],
+                "message": "domains/ must not import node:readline \u2014 use UI from shell/ui/."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/domains/investigation/**/*.ts"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../*"],
+                "message": "Use \"~/\" path alias instead of relative parent imports."
+              },
+              {
+                "group": ["bun", "bun:*"],
+                "message": "Bun module imports are not available in the nodejs build \u2014 use a portable alternative."
+              },
+              {
+                "group": ["~/commands/*", "~/commands/**"],
+                "message": "domains/ must not import from commands/."
+              },
+              {
+                "group": ["~/domains/auth/*", "~/domains/auth/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/config/*", "~/domains/config/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/doctor/*", "~/domains/doctor/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/emails/*", "~/domains/emails/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/flows/*", "~/domains/flows/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/install/*", "~/domains/install/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/publicApi/*", "~/domains/publicApi/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": [
+                  "~/domains/interactiveRunner/*",
+                  "~/domains/interactiveRunner/**"
+                ],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/runner/*", "~/domains/runner/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["node:fs", "fs", "node:fs/promises", "fs/promises"],
+                "message": "domains/ must not import node:fs \u2014 file I/O belongs in shell/."
+              },
+              {
+                "group": ["node:child_process", "child_process"],
+                "message": "domains/ must not import node:child_process \u2014 use SpawnFn from shell/spawn.js."
+              },
+              {
+                "group": ["node:readline", "readline"],
+                "message": "domains/ must not import node:readline \u2014 use UI from shell/ui/."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/domains/runner/**/*.ts"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../*"],
+                "message": "Use \"~/\" path alias instead of relative parent imports."
+              },
+              {
+                "group": ["bun", "bun:*"],
+                "message": "Bun module imports are not available in the nodejs build \u2014 use a portable alternative."
+              },
+              {
+                "group": ["~/commands/*", "~/commands/**"],
+                "message": "domains/ must not import from commands/."
+              },
+              {
+                "group": ["~/domains/auth/*", "~/domains/auth/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/config/*", "~/domains/config/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/doctor/*", "~/domains/doctor/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/emails/*", "~/domains/emails/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/flows/*", "~/domains/flows/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/install/*", "~/domains/install/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": [
+                  "~/domains/interactiveRunner/*",
+                  "~/domains/interactiveRunner/**"
+                ],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["~/domains/publicApi/*", "~/domains/publicApi/**"],
+                "message": "Cross-domain import: shared types belong in core/ or shell/."
+              },
+              {
+                "group": ["node:fs", "fs", "node:fs/promises", "fs/promises"],
+                "message": "domains/ must not import node:fs \u2014 file I/O belongs in shell/."
+              },
+              {
+                "group": ["node:child_process", "child_process"],
+                "message": "domains/ must not import node:child_process \u2014 use SpawnFn from shell/spawn.js."
+              },
+              {
+                "group": ["node:readline", "readline"],
+                "message": "domains/ must not import node:readline \u2014 use UI from shell/ui/."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/runnerSdk/**/*.ts"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../*"],
+                "message": "Use \"~/\" path alias instead of relative parent imports."
+              },
+              {
+                "group": ["bun", "bun:*"],
+                "message": "Bun module imports are not available in the nodejs build \u2014 use a portable alternative."
+              },
+              {
+                "group": ["~/commands/*", "~/commands/**"],
+                "message": "runnerSdk/ is the published library entry and must not import from commands/."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/core/**/*.ts", "src/domains/**/*.ts"],
+      "rules": {
+        "eslint/no-restricted-properties": [
+          "error",
+          {
+            "object": "process",
+            "property": "stdout",
+            "message": "core/ and domains/ must not write to process.stdout \u2014 return data and let shell/ render it."
+          },
+          {
+            "object": "process",
+            "property": "stderr",
+            "message": "core/ and domains/ must not write to process.stderr \u2014 return data and let shell/ render it."
+          },
+          {
+            "object": "process",
+            "property": "stdin",
+            "message": "core/ and domains/ must not read from process.stdin \u2014 use UI from shell/ui/."
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "**/*.test.ts",
+        "**/*.test.js",
+        "**/*.mock.ts",
+        "**/*.fixtures.ts",
+        "**/*.testUtils.ts"
+      ],
+      "rules": {
+        "typescript/unbound-method": "off",
+        "eslint/max-lines": [
+          "error",
+          {
+            "max": 250
+          }
+        ],
+        "eslint/no-restricted-globals": "off",
+        "eslint/no-restricted-properties": "off",
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../*"],
+                "message": "Use \"~/\" path alias instead of relative parent imports."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["scripts/*.js"],
+      "rules": {
+        "typescript/no-unsafe-return": "off",
+        "typescript/no-unsafe-assignment": "off"
+      }
+    }
+  ]
+}

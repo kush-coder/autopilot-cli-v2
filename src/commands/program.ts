@@ -1,0 +1,47 @@
+import { Command } from "commander";
+
+import type { SignalRegistry } from "~/shell/signals/createSignalRegistry.js";
+import { registerAgentCommand } from "./agent/index.js";
+import { registerAuthCommand } from "./auth/index.js";
+import { registerBuildCommand } from "./build/index.js";
+import { registerDoctorCommand } from "./doctor/index.js";
+import { registerFlowsCommand } from "./flows/index.js";
+import { registerHelpCommand } from "./help/index.js";
+import { registerInitCommand } from "./init/index.js";
+import { registerInstallCommand } from "./install/index.js";
+import { registerAttemptCommand } from "./attempt/index.js";
+import { registerPublicApiCommands } from "./publicApi/index.js";
+import { registerRunnerCommand } from "./runner/index.js";
+import { exitCodes, exit } from "~/shell/exit.js";
+import packageJson from "../../package.json" with { type: "json" };
+
+export function createProgram({
+  signals,
+}: {
+  signals: SignalRegistry;
+}): Command {
+  const program = new Command()
+    .name("qawolf")
+    .description("Run QA Wolf flows locally")
+    .version(packageJson.version)
+    .option("--verbose", "Enable debug logging to stderr")
+    .option("--json", "Output as JSON")
+    .option("--agent", "Output for agent consumption")
+    .exitOverride((err) => {
+      exit(err.exitCode === 0 ? exitCodes.success : exitCodes.invalidArgs);
+    });
+
+  registerAgentCommand(program, signals);
+  registerAuthCommand(program, signals);
+  registerBuildCommand(program, signals);
+  registerDoctorCommand(program, signals);
+  registerFlowsCommand(program, signals);
+  registerInitCommand(program, signals);
+  registerInstallCommand(program, signals);
+  registerAttemptCommand(program, signals);
+  registerRunnerCommand(program, signals);
+  registerPublicApiCommands(program, signals);
+  registerHelpCommand(program);
+
+  return program;
+}

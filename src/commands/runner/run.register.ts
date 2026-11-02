@@ -1,0 +1,130 @@
+import type { Command } from "commander";
+
+import { declareCommandKind } from "~/commands/commandKind.js";
+import { defaultFollowTimeoutSeconds } from "~/core/interactiveRunner/followTimeout.js";
+import { handleRunnerRun } from "~/domains/interactiveRunner/runFlow.js";
+import { collectValue } from "~/domains/runner/runFlagParsers.js";
+import type { SignalRegistry } from "~/shell/signals/createSignalRegistry.js";
+
+import {
+  runnerDeps,
+  runnerFlagDescription,
+  withRunnerContext,
+} from "./context.js";
+import { runnerGuides } from "./guides/index.js";
+
+const runExamples = `
+Examples:
+  $ qawolf runner run flows/checkout.flow.ts
+  $ qawolf runner run flows/checkout.flow.ts --follow
+  $ qawolf runner run flows/checkout.flow.ts --follow --logs
+  $ qawolf runner run flows/checkout.flow.ts --lines 12-40
+  $ qawolf runner run flows/checkout.flow.ts --lines 4-9 --lines-file pages/login.ts
+  $ qawolf runner run flows/checkout.flow.ts --env-id staging
+  $ qawolf runner run flows/checkout.flow.ts --env-var RUN_INPUT_PATH=uploads/app.apk
+  $ qawolf runner run flows/checkout.flow.ts --builds <buildId> <buildId>`;
+
+type RunFlags = {
+  builds: string[];
+  envFile?: string;
+  envId?: string;
+  envVar: string[];
+  follow: boolean;
+  lines?: string;
+  linesFile?: string;
+  logs: boolean;
+  recorderEvents: boolean;
+  runEvents: boolean;
+  runner?: string;
+  timeout: string;
+};
+
+export function registerRunCommand(
+  runner: Command,
+  signals: SignalRegistry,
+): void {
+  declareCommandKind(runner.command("run <flowFile>"), "write")
+    .description(
+      "Run a flow on an interactive runner, shipping the flow and what it imports",
+    )
+    .option(
+      "--follow",
+      "Report the run's status until it settles: in progress, then passed or failed",
+      false,
+    )
+    // Not --verbose: the program already claims that flag for debug logging,
+    // and Commander lets a program-level option swallow it from any position.
+    .option(
+      "--logs",
+      "Stream every log line the run produces while following. Implies --follow",
+      false,
+    )
+    .option(
+      "--run-events",
+      "Stream the run's progress events as JSON lines while following. Implies --follow",
+      false,
+    )
+    .option(
+      "--recorder-events",
+      "Stream the browser actions the runner records as JSON lines while following, from an anchor taken just before submission: the recorder is runner-wide, not run-scoped. Implies --follow",
+      false,
+    )
+    .option(
+      "--env-id <env>",
+      "QA Wolf environment whose variables the run is given, by id or alias. Defaults to QAWOLF_ENVIRONMENT unless --env-file is passed. QA Wolf reads and decrypts them itself, so they never leave the server and no size limit applies to them",
+    )
+    .option(
+      "--env-file <path>",
+      "Dotenv file on this machine whose variables the run is given. With --env-id, they go on top of that environment's",
+    )
+    .option(
+      "--var, --env-var <name=value>",
+      "One variable for this run only, on top of the environment and --env-file; repeat for several",
+      collectValue,
+      [],
+    )
+    .option(
+      "--builds <ids...>",
+      "Builds to install in this run, from build.create, one per app and platform. Each replaces the environment's latest build of its app and platform. Put the flow file before this flag",
+      [],
+    )
+    .option(
+      "--lines <start-end>",
+      "Run only these 1-indexed lines against the browser as it stands, instead of the whole flow from a fresh one",
+    )
+    .option(
+      "--lines-file <path>",
+      "File the --lines range lives in. Defaults to <flowFile>; pass it only when the lines are in another file, such as a page object",
+    )
+    .option("--runner <id>", runnerFlagDescription)
+    .option(
+      "--timeout <seconds>",
+      "Give up following after this long. Following keeps the runner alive, so a run that never settles would otherwise bill until the terminal closed",
+      String(defaultFollowTimeoutSeconds),
+    )
+    .addHelpText("after", runExamples)
+    .addHelpText("after", runnerGuides.run)
+    .action((flowFile: string, opts: RunFlags, command: Command) =>
+      withRunnerContext(signals, (ctx) =>
+        handleRunnerRun(
+          ctx,
+          {
+            builds: opts.builds,
+            entryPoint: flowFile,
+            envFile: opts.envFile,
+            envId: opts.envId,
+            follow: opts.follow,
+            lines: opts.lines,
+            linesFile: opts.linesFile,
+            logs: opts.logs,
+            recorderEvents: opts.recorderEvents,
+            runEvents: opts.runEvents,
+            runner: opts.runner,
+            timeout: opts.timeout,
+            vars: opts.envVar,
+          },
+          runnerDeps(ctx),
+        ),
+      )(opts, command),
+    );
+}
